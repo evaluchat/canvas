@@ -2,12 +2,14 @@ import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import { ArtifactMarkdownV3 } from "@opencanvas/shared/types";
 import "@blocknote/core/fonts/inter.css";
 import {
+  FormattingToolbarController,
   getDefaultReactSlashMenuItems,
   SuggestionMenuController,
   useCreateBlockNote,
 } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import "@blocknote/shadcn/style.css";
+import { CustomFormattingToolbar } from "./CustomFormattingToolbar";
 import { isArtifactMarkdownContent } from "@opencanvas/shared/utils/artifacts";
 import { CopyText } from "./components/CopyText";
 import { getArtifactContent } from "@opencanvas/shared/utils/artifacts";
@@ -293,6 +295,9 @@ export function TextRendererComponent(props: TextRendererProps) {
               "custom-blocknote-theme"
             )}
           >
+            <FormattingToolbarController
+              formattingToolbar={CustomFormattingToolbar as any}
+            />
             <SuggestionMenuController
               getItems={async () =>
                 getDefaultReactSlashMenuItems(editor).filter(

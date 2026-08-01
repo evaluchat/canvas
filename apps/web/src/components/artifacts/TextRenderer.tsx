@@ -20,6 +20,11 @@ import { Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { Textarea } from "../ui/textarea";
 import { cn } from "@/lib/utils";
+import { canvasSchema } from "./canvas-schema";
+import {
+  exportCanvasBlocksToMarkdown,
+  parseMarkdownToCanvasBlocks,
+} from "./mermaid-markdown";
 
 const cleanText = (text: string) => {
   return text.replaceAll("\\\n", "\n");
@@ -62,7 +67,7 @@ export interface TextRendererProps {
 }
 
 export function TextRendererComponent(props: TextRendererProps) {
-  const editor = useCreateBlockNote({});
+  const editor = useCreateBlockNote({ schema: canvasSchema });
   const { graphData } = useGraphContext();
   const {
     artifact,
@@ -134,6 +139,7 @@ export function TextRendererComponent(props: TextRendererProps) {
       return;
     }
 
+    let cancelled = false;
     try {
       const currentIndex = artifact.currentIndex;
       const currentContent = artifact.contents.find(
@@ -143,9 +149,11 @@ export function TextRendererComponent(props: TextRendererProps) {
 
       // Blocks are not found in the artifact, so once streaming is done we should update the artifact state with the blocks
       (async () => {
-        const markdownAsBlocks = await editor.tryParseMarkdownToBlocks(
+        const markdownAsBlocks = await parseMarkdownToCanvasBlocks(
+          editor,
           currentContent.fullMarkdown
         );
+        if (cancelled) return;
         editor.replaceBlocks(editor.document, markdownAsBlocks);
         setUpdateRenderedArtifactRequired(false);
         setManuallyUpdatingArtifact(false);
@@ -154,17 +162,31 @@ export function TextRendererComponent(props: TextRendererProps) {
       setManuallyUpdatingArtifact(false);
       setUpdateRenderedArtifactRequired(false);
     }
+
+    return () => {
+      cancelled = true;
+      // If the effect cleanup fires (deps changed while async was in flight),
+      // cancel must also release the manual-update lock so the next effect
+      // isn't permanently blocked. Without this, rapid artifact changes from
+      // raw-view editing can strand manuallyUpdatingArtifact=true and leave
+      // the canvas empty when toggling back to formatted view.
+      setManuallyUpdatingArtifact(false);
+    };
   }, [artifact, updateRenderedArtifactRequired]);
 
   useEffect(() => {
     if (isRawView) {
-      editor.blocksToMarkdownLossy(editor.document).then(setRawMarkdown);
+      exportCanvasBlocksToMarkdown(editor, editor.document).then(
+        setRawMarkdown
+      );
     } else if (!isRawView && rawMarkdown) {
       try {
         (async () => {
           setManuallyUpdatingArtifact(true);
-          const markdownAsBlocks =
-            await editor.tryParseMarkdownToBlocks(rawMarkdown);
+          const markdownAsBlocks = await parseMarkdownToCanvasBlocks(
+            editor,
+            rawMarkdown
+          );
           editor.replaceBlocks(editor.document, markdownAsBlocks);
           setManuallyUpdatingArtifact(false);
         })();
@@ -184,7 +206,10 @@ export function TextRendererComponent(props: TextRendererProps) {
     )
       return;
 
-    const fullMarkdown = await editor.blocksToMarkdownLossy(editor.document);
+    const fullMarkdown = await exportCanvasBlocksToMarkdown(
+      editor,
+      editor.document
+    );
     setArtifact((prev) => {
       if (!prev) {
         return {

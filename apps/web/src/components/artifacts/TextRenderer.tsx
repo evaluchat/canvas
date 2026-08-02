@@ -10,6 +10,7 @@ import {
 import { BlockNoteView } from "@blocknote/shadcn";
 import "@blocknote/shadcn/style.css";
 import { CustomFormattingToolbar } from "./CustomFormattingToolbar";
+import MathInlineExtension from "./MathInlineExtension";
 import { isArtifactMarkdownContent } from "@opencanvas/shared/utils/artifacts";
 import { CopyText } from "./components/CopyText";
 import { getArtifactContent } from "@opencanvas/shared/utils/artifacts";
@@ -21,6 +22,8 @@ import { motion } from "framer-motion";
 import { Textarea } from "../ui/textarea";
 import { cn } from "@/lib/utils";
 import { canvasSchema } from "./canvas-schema";
+
+import "katex/dist/katex.min.css";
 import {
   exportCanvasBlocksToMarkdown,
   parseMarkdownToCanvasBlocks,
@@ -67,7 +70,12 @@ export interface TextRendererProps {
 }
 
 export function TextRendererComponent(props: TextRendererProps) {
-  const editor = useCreateBlockNote({ schema: canvasSchema });
+  const editor = useCreateBlockNote({
+    schema: canvasSchema,
+    _tiptapOptions: {
+      extensions: [MathInlineExtension],
+    },
+  });
   const { graphData } = useGraphContext();
   const {
     artifact,

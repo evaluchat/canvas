@@ -1,3 +1,5 @@
+import { preprocessMarkdownForMath } from "./math-markdown";
+
 const MERMAID_FENCE_RE = /```mermaid\r?\n([\s\S]*?)```/g;
 
 function inlineContentToPlainText(content: unknown): string {
@@ -102,8 +104,9 @@ export async function parseMarkdownToCanvasBlocks(
   editor: any,
   markdown: string
 ): Promise<Record<string, unknown>[]> {
+  const withMath = preprocessMarkdownForMath(markdown);
   const { markdown: preprocessed, mermaidByPlaceholder } =
-    preprocessMarkdownForMermaidImport(markdown);
+    preprocessMarkdownForMermaidImport(withMath);
   const blocks = await editor.tryParseMarkdownToBlocks(preprocessed);
   return convertParsedBlocksToMermaid(
     blocks as Record<string, unknown>[],

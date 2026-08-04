@@ -3,7 +3,7 @@ import { ArtifactTitle } from "./artifact-title";
 import { NavigateArtifactHistory } from "./navigate-artifact-history";
 import { ArtifactCodeV3, ArtifactMarkdownV3 } from "@opencanvas/shared/types";
 import { Assistant } from "@langchain/langgraph-sdk";
-import { PanelRightClose } from "lucide-react";
+import { PanelRightClose, Printer } from "lucide-react";
 import { TooltipIconButton } from "@/components/ui/assistant-ui/tooltip-icon-button";
 
 interface ArtifactHeaderProps {
@@ -17,6 +17,7 @@ interface ArtifactHeaderProps {
   artifactUpdateFailed: boolean;
   chatCollapsed: boolean;
   setChatCollapsed: (c: boolean) => void;
+  onPrint?: () => void;
 }
 
 export function ArtifactHeader(props: ArtifactHeaderProps) {
@@ -41,6 +42,17 @@ export function ArtifactHeader(props: ArtifactHeaderProps) {
         />
       </div>
       <div className="flex gap-2 items-end mt-[10px] mr-[6px]">
+        {props.onPrint && (
+          <TooltipIconButton
+            tooltip="Print canvas"
+            variant="ghost"
+            className="w-8 h-8"
+            delayDuration={400}
+            onClick={props.onPrint}
+          >
+            <Printer className="w-4 h-4 text-gray-600" />
+          </TooltipIconButton>
+        )}
         <NavigateArtifactHistory
           isBackwardsDisabled={props.isBackwardsDisabled}
           isForwardDisabled={props.isForwardDisabled}

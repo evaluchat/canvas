@@ -7,11 +7,22 @@ import {
 } from "@opencanvas/shared/types";
 import { EditorView } from "@codemirror/view";
 import { HumanMessage } from "@langchain/core/messages";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { v4 as uuidv4 } from "uuid";
 import { ActionsToolbar, CodeToolBar } from "./actions_toolbar";
 import { CodeRenderer } from "./CodeRenderer";
 import { TextRenderer } from "./TextRenderer";
+
+const PrintView = React.lazy(() =>
+  import("./PrintView").then((m) => ({ default: m.PrintView }))
+);
 import { CustomQuickActions } from "./actions_toolbar/custom";
 import { getArtifactContent } from "@opencanvas/shared/utils/artifacts";
 import { ArtifactLoading } from "./ArtifactLoading";
@@ -64,6 +75,9 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
   const [inputValue, setInputValue] = useState("");
   const [isHoveringOverArtifact, setIsHoveringOverArtifact] = useState(false);
   const [isValidSelectionOrigin, setIsValidSelectionOrigin] = useState(false);
+
+  // Print functionality
+  const [showPrintView, setShowPrintView] = useState(false);
 
   const handleMouseUp = useCallback(() => {
     const selection = window.getSelection();
@@ -142,6 +156,33 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
     event.stopPropagation();
   }, []);
 
+  const handlePrint = useCallback(() => {
+    if (!artifact) return;
+
+    const currentArtifactContent = getArtifactContent(artifact);
+    if (currentArtifactContent.type !== "text") return;
+
+    setShowPrintView(true);
+
+    // Wait for next tick to ensure PrintView is rendered
+    setTimeout(() => {
+      window.print();
+      // Clean up after print dialog closes (estimated delay)
+      setTimeout(() => setShowPrintView(false), 1000);
+    }, 100);
+  }, [artifact]);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      // Handle Ctrl+P (Cmd+P on Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
+        e.preventDefault();
+        handlePrint();
+      }
+    },
+    [handlePrint]
+  );
+
   const handleSubmit = async (content: string) => {
     const humanMessage = new HumanMessage({
       content,
@@ -164,12 +205,14 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
   useEffect(() => {
     document.addEventListener("mouseup", handleMouseUp);
     document.addEventListener("mousedown", handleDocumentMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.removeEventListener("mouseup", handleMouseUp);
       document.removeEventListener("mousedown", handleDocumentMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [handleMouseUp, handleDocumentMouseDown]);
+  }, [handleMouseUp, handleDocumentMouseDown, handleKeyDown]);
 
   useEffect(() => {
     try {
@@ -318,6 +361,9 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
         artifactUpdateFailed={artifactUpdateFailed}
         chatCollapsed={props.chatCollapsed}
         setChatCollapsed={props.setChatCollapsed}
+        onPrint={
+          currentArtifactContent.type === "text" ? handlePrint : undefined
+        }
       />
       <div
         ref={contentRef}
@@ -394,6 +440,16 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
           }
         />
       ) : null}
+
+      {/* Print view portal */}
+      {showPrintView &&
+        currentArtifactContent.type === "text" &&
+        createPortal(
+          <Suspense fallback={<div>Loading print view...</div>}>
+            <PrintView markdown={currentArtifactContent.fullMarkdown} />
+          </Suspense>,
+          document.body
+        )}
     </div>
   );
 }

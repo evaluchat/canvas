@@ -179,7 +179,7 @@ export function GraphProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!threadData.threadId) return;
-    if (!messages.length || !artifact) return;
+    if (!artifact) return;
     if (updateRenderedArtifactRequired || threadSwitched || isStreaming) return;
     const currentIndex = artifact.currentIndex;
     const currentContent = artifact.contents.find(

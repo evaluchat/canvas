@@ -17,6 +17,7 @@ interface ArtifactHeaderProps {
   artifactUpdateFailed: boolean;
   chatCollapsed: boolean;
   setChatCollapsed: (c: boolean) => void;
+  onTitleChange?: (newTitle: string) => void;
   onPrint?: () => void;
 }
 
@@ -39,6 +40,7 @@ export function ArtifactHeader(props: ArtifactHeaderProps) {
           title={props.currentArtifactContent.title}
           isArtifactSaved={props.isArtifactSaved}
           artifactUpdateFailed={props.artifactUpdateFailed}
+          onTitleChange={props.onTitleChange}
         />
       </div>
       <div className="flex gap-2 items-end mt-[10px] mr-[6px]">

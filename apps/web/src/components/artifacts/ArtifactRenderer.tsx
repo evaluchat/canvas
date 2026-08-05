@@ -59,6 +59,7 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
     setMessages,
     streamMessage,
     setSelectedBlocks,
+    setArtifact,
   } = graphData;
   const editorRef = useRef<EditorView | null>(null);
   const artifactContentRef = useRef<HTMLDivElement>(null);
@@ -361,6 +362,15 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
         artifactUpdateFailed={artifactUpdateFailed}
         chatCollapsed={props.chatCollapsed}
         setChatCollapsed={props.setChatCollapsed}
+        onTitleChange={(newTitle: string) => {
+          if (!artifact) return;
+          const updatedContents = artifact.contents.map((c) =>
+            c.index === currentArtifactContent.index
+              ? { ...c, title: newTitle }
+              : c
+          );
+          setArtifact({ ...artifact, contents: updatedContents });
+        }}
         onPrint={
           currentArtifactContent.type === "text" ? handlePrint : undefined
         }

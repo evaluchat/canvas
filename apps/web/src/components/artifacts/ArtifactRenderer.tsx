@@ -76,6 +76,8 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
   const [inputValue, setInputValue] = useState("");
   const [isHoveringOverArtifact, setIsHoveringOverArtifact] = useState(false);
   const [isValidSelectionOrigin, setIsValidSelectionOrigin] = useState(false);
+  // Incremented on scroll to force highlight re-render so highlights scroll with text
+  const [scrollTick, setScrollTick] = useState(0);
 
   // Print functionality
   const [showPrintView, setShowPrintView] = useState(false);
@@ -215,6 +217,35 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
     };
   }, [handleMouseUp, handleDocumentMouseDown, handleKeyDown]);
 
+  // Re-render highlights when the scroll container scrolls so they move with the text.
+  // The highlight overlay lives outside the TextRenderer's overflow-y-auto container,
+  // so without this listener the highlights stay at fixed viewport positions while text scrolls.
+  useEffect(() => {
+    if (!isSelectionActive) return;
+
+    let rafId: number | null = null;
+    const handleScroll = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        setScrollTick((t) => t + 1);
+        rafId = null;
+      });
+    };
+
+    // Capture phase catches scroll events from nested scroll containers
+    // (scroll events don't bubble, but capture phase propagates from document down)
+    document.addEventListener("scroll", handleScroll, {
+      passive: true,
+      capture: true,
+    });
+    return () => {
+      document.removeEventListener("scroll", handleScroll, {
+        capture: true,
+      } as EventListenerOptions);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [isSelectionActive]);
+
   useEffect(() => {
     try {
       if (artifactContentRef.current && highlightLayerRef.current) {
@@ -290,7 +321,7 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
     } catch (e) {
       console.error("Failed to get artifact selection", e);
     }
-  }, [isSelectionActive, selectionBox]);
+  }, [isSelectionActive, selectionBox, scrollTick]);
 
   useEffect(() => {
     if (!!selectedBlocks && !isSelectionActive) {

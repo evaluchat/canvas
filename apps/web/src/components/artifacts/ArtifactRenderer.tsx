@@ -66,6 +66,12 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
   const highlightLayerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const selectionBoxRef = useRef<HTMLDivElement>(null);
+  // Cached clone of the most recent in-canvas selection range. The highlight overlay
+  // renders from this (DOM-anchored) range so it survives the browser selection moving
+  // to the chat input when the user types/scrolls there. Without it, every
+  // rerender re-read window.getSelection(), which had left the canvas, so the green
+  // highlight was wiped on chat interaction.
+  const selectionRangeRef = useRef<Range | null>(null);
   const [selectionBox, setSelectionBox] = useState<SelectionBox>();
   const [selectionIndexes, setSelectionIndexes] = useState<{
     start: number;
@@ -124,6 +130,7 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
             text: selectedText,
           });
           setIsInputVisible(false);
+          selectionRangeRef.current = range.cloneRange();
           setIsSelectionActive(true);
         } else {
           setIsValidSelectionOrigin(false);
@@ -140,6 +147,7 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
     setIsSelectionActive(false);
     setIsValidSelectionOrigin(false);
     setInputValue("");
+    selectionRangeRef.current = null;
   };
 
   const handleDocumentMouseDown = useCallback(
@@ -256,64 +264,61 @@ function ArtifactRendererComponent(props: ArtifactRendererProps) {
         highlightLayer.innerHTML = "";
 
         if (isSelectionActive && selectionBox) {
-          const selection = window.getSelection();
-          if (selection && selection.rangeCount > 0) {
-            const range = selection.getRangeAt(0);
+          const range = selectionRangeRef.current;
 
-            if (content.contains(range.commonAncestorContainer)) {
-              const rects = range.getClientRects();
-              const layerRect = highlightLayer.getBoundingClientRect();
+          if (range && content.contains(range.commonAncestorContainer)) {
+            const rects = range.getClientRects();
+            const layerRect = highlightLayer.getBoundingClientRect();
 
-              // Calculate start and end indexes
-              let startIndex = 0;
-              let endIndex = 0;
-              let currentArtifactContent:
-                | ArtifactCodeV3
-                | ArtifactMarkdownV3
-                | undefined = undefined;
-              try {
-                currentArtifactContent = artifact
-                  ? getArtifactContent(artifact)
-                  : undefined;
-              } catch (_) {
-                console.error(
-                  "[ArtifactRenderer.tsx L229]\n\nERROR NO ARTIFACT CONTENT FOUND\n\n",
-                  artifact
+            // Calculate start and end indexes
+            let startIndex = 0;
+            let endIndex = 0;
+            let currentArtifactContent:
+              | ArtifactCodeV3
+              | ArtifactMarkdownV3
+              | undefined = undefined;
+            try {
+              currentArtifactContent = artifact
+                ? getArtifactContent(artifact)
+                : undefined;
+            } catch (_) {
+              console.error(
+                "[ArtifactRenderer.tsx L229]\n\nERROR NO ARTIFACT CONTENT FOUND\n\n",
+                artifact
+              );
+              // no-op
+            }
+
+            if (currentArtifactContent?.type === "code") {
+              if (editorRef.current) {
+                const from = editorRef.current.posAtDOM(
+                  range.startContainer,
+                  range.startOffset
                 );
-                // no-op
+                const to = editorRef.current.posAtDOM(
+                  range.endContainer,
+                  range.endOffset
+                );
+                startIndex = from;
+                endIndex = to;
               }
+              setSelectionIndexes({ start: startIndex, end: endIndex });
+            }
 
-              if (currentArtifactContent?.type === "code") {
-                if (editorRef.current) {
-                  const from = editorRef.current.posAtDOM(
-                    range.startContainer,
-                    range.startOffset
-                  );
-                  const to = editorRef.current.posAtDOM(
-                    range.endContainer,
-                    range.endOffset
-                  );
-                  startIndex = from;
-                  endIndex = to;
-                }
-                setSelectionIndexes({ start: startIndex, end: endIndex });
-              }
+            for (let i = 0; i < rects.length; i++) {
+              const rect = rects[i];
+              const highlightEl = document.createElement("div");
+              highlightEl.className =
+                "absolute bg-[#3597934d] pointer-events-none";
 
-              for (let i = 0; i < rects.length; i++) {
-                const rect = rects[i];
-                const highlightEl = document.createElement("div");
-                highlightEl.className =
-                  "absolute bg-[#3597934d] pointer-events-none";
+              // Adjust the positioning and size
+              const verticalPadding = 3;
+              highlightEl.style.left = `${rect.left - layerRect.left}px`;
+              highlightEl.style.top = `${rect.top - layerRect.top - verticalPadding}px`;
+              highlightEl.style.width = `${rect.width}px`;
+              highlightEl.style.height = `${rect.height + verticalPadding * 2}px`;
 
-                // Adjust the positioning and size
-                const verticalPadding = 3;
-                highlightEl.style.left = `${rect.left - layerRect.left}px`;
-                highlightEl.style.top = `${rect.top - layerRect.top - verticalPadding}px`;
-                highlightEl.style.width = `${rect.width}px`;
-                highlightEl.style.height = `${rect.height + verticalPadding * 2}px`;
-
-                highlightLayer.appendChild(highlightEl);
-              }
+              highlightLayer.appendChild(highlightEl);
             }
           }
         }

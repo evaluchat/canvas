@@ -33,6 +33,57 @@ const cleanText = (text: string) => {
   return text.replaceAll("\\\n", "\n");
 };
 
+/**
+ * Checks whether a single cell in a table row is "empty" — i.e. contains no
+ * meaningful content.  A cell is empty when it is an empty array or every
+ * InlineContent node in it is a text node whose text is empty / whitespace.
+ */
+function isCellEmpty(cell: unknown[]): boolean {
+  if (cell.length === 0) return true;
+  return cell.every((node: any) => {
+    if (node && node.type === "text") {
+      return (node.text as string).trim() === "";
+    }
+    // Non-text inline content (links, mentions, etc.) counts as non-empty
+    return false;
+  });
+}
+
+/**
+ * Removes phantom empty rows that BlockNote's tryParseMarkdownToBlocks()
+ * injects into tables during markdown → block conversion.
+ *
+ * A row is considered phantom when *every* cell in it is empty.
+ * Returns a new blocks array; does not mutate the input.
+ */
+function filterEmptyTableRows(blocks: any[]): any[] {
+  return blocks.map((block) => {
+    if (
+      block.type === "table" &&
+      block.content &&
+      block.content.type === "tableContent" &&
+      Array.isArray(block.content.rows)
+    ) {
+      const filteredRows = block.content.rows.filter(
+        (row: { cells: unknown[][] }) => {
+          return !row.cells.every(isCellEmpty);
+        }
+      );
+      // Only create a new object if we actually removed rows
+      if (filteredRows.length !== block.content.rows.length) {
+        return {
+          ...block,
+          content: {
+            ...block.content,
+            rows: filteredRows,
+          },
+        };
+      }
+    }
+    return block;
+  });
+}
+
 function ViewRawText({
   isRawView,
   setIsRawView,
@@ -162,7 +213,10 @@ export function TextRendererComponent(props: TextRendererProps) {
           currentContent.fullMarkdown
         );
         if (cancelled) return;
-        editor.replaceBlocks(editor.document, markdownAsBlocks);
+        editor.replaceBlocks(
+          editor.document,
+          filterEmptyTableRows(markdownAsBlocks)
+        );
         setUpdateRenderedArtifactRequired(false);
         setManuallyUpdatingArtifact(false);
       })();
@@ -195,7 +249,10 @@ export function TextRendererComponent(props: TextRendererProps) {
             editor,
             rawMarkdown
           );
-          editor.replaceBlocks(editor.document, markdownAsBlocks);
+          editor.replaceBlocks(
+            editor.document,
+            filterEmptyTableRows(markdownAsBlocks)
+          );
           setManuallyUpdatingArtifact(false);
         })();
       } catch (_) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type {
   RepositoryArtifactRef,
@@ -40,8 +40,9 @@ function BoundRepositoryPanel({
   item: { id: string; binding: ResearchRepositoryBinding };
 }) {
   const searchParams = useSearchParams();
+  const urlArtifactId = searchParams.get("artifactId") ?? undefined;
   const [selectedArtifactId, setSelectedArtifactId] = useState(
-    () => searchParams.get("artifactId") ?? undefined
+    () => urlArtifactId
   );
   const [available, setAvailable] = useState<boolean>();
   const [status, setStatus] = useState<RepositoryStatus>();
@@ -53,6 +54,15 @@ function BoundRepositoryPanel({
   const [reconcileError, setReconcileError] = useState<string>();
   const [reconcileConfirmation, setReconcileConfirmation] = useState<string>();
   const [reconciling, setReconciling] = useState(false);
+  const previousUrlArtifactId = useRef(urlArtifactId);
+
+  useEffect(() => {
+    if (urlArtifactId === previousUrlArtifactId.current) return;
+    previousUrlArtifactId.current = urlArtifactId;
+    setSelectedArtifact(undefined);
+    setSelectedArtifactId(urlArtifactId);
+    setBrowserRefreshKey((current) => current + 1);
+  }, [urlArtifactId]);
 
   useEffect(() => {
     let cancelled = false;

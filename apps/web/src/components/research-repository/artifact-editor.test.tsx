@@ -208,6 +208,83 @@ describe("ArtifactEditor", () => {
     expect(onCommitted).toHaveBeenCalledWith(committedArtifactBSha);
   });
 
+  it("ignores a commit result after switching workspaces", async () => {
+    const workspaceBBaseCommitSha = "e".repeat(40);
+    const workspaceBCommitSha = "f".repeat(40);
+    let resolveWorkspaceACommit!: (response: Response) => void;
+    const workspaceACommit = new Promise<Response>((resolve) => {
+      resolveWorkspaceACommit = resolve;
+    });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (init?.method === "POST") {
+          return url.includes("workspace-one")
+            ? workspaceACommit
+            : jsonResponse({ commitSha: workspaceBCommitSha });
+        }
+        return url.includes("workspace-one")
+          ? artifactResponse("# Workspace A")
+          : artifactResponse("# Workspace B", workspaceBBaseCommitSha);
+      }
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const onCommitted = vi.fn();
+
+    const view = render(
+      createElement(ArtifactEditor, {
+        workspaceItemId: "workspace-one",
+        artifact,
+        onCommitted,
+      })
+    );
+
+    fireEvent.change(await screen.findByDisplayValue("# Workspace A"), {
+      target: { value: "# Edited A" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    view.rerender(
+      createElement(ArtifactEditor, {
+        workspaceItemId: "workspace-two",
+        artifact,
+        onCommitted,
+      })
+    );
+    const workspaceBEditor = await screen.findByDisplayValue("# Workspace B");
+
+    await act(async () => {
+      resolveWorkspaceACommit(jsonResponse({ commitSha: "d".repeat(40) }));
+      await workspaceACommit;
+    });
+
+    expect(screen.queryByText("Changes committed")).toBeNull();
+    expect(onCommitted).not.toHaveBeenCalled();
+
+    fireEvent.change(workspaceBEditor, {
+      target: { value: "# Edited B" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
+
+    expect(await screen.findByText("Changes committed")).toBeTruthy();
+    const workspaceBCommitCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        String(url).includes("workspace-two") &&
+        (init as RequestInit | undefined)?.method === "POST"
+    );
+    const workspaceBCommitBody = JSON.parse(
+      String((workspaceBCommitCall?.[1] as RequestInit).body)
+    );
+    expect(workspaceBCommitBody).toMatchObject({
+      artifactId: "index",
+      baseCommitSha: workspaceBBaseCommitSha,
+      content: "# Edited B",
+    });
+    expect(onCommitted).toHaveBeenCalledOnce();
+    expect(onCommitted).toHaveBeenCalledWith(workspaceBCommitSha);
+  });
+
   it("renders unsupported artifacts as read-only", async () => {
     const fetchMock = vi
       .fn()

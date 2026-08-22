@@ -53,8 +53,8 @@ export function ArtifactEditor({
   const [confirmation, setConfirmation] = useState<string>();
   const loadVersion = useRef(0);
   const operationTokenRef = useRef(0);
-  const currentArtifactIdRef = useRef(artifactId);
-  currentArtifactIdRef.current = artifactId;
+  const currentSelectionRef = useRef({ workspaceItemId, artifactId });
+  currentSelectionRef.current = { workspaceItemId, artifactId };
 
   const loadArtifact = useCallback(async () => {
     if (!artifactId) return;
@@ -116,7 +116,7 @@ export function ArtifactEditor({
   useEffect(() => {
     operationTokenRef.current += 1;
     setCommitting(false);
-  }, [artifactId]);
+  }, [artifactId, workspaceItemId]);
 
   async function commitChanges() {
     if (
@@ -127,10 +127,13 @@ export function ArtifactEditor({
     ) {
       return;
     }
+    const committedWorkspaceItemId = workspaceItemId;
     const committedArtifactId = artifact.artifactId;
     const operationToken = ++operationTokenRef.current;
     const isCurrentOperation = () =>
-      committedArtifactId === currentArtifactIdRef.current &&
+      committedWorkspaceItemId ===
+        currentSelectionRef.current.workspaceItemId &&
+      committedArtifactId === currentSelectionRef.current.artifactId &&
       operationToken === operationTokenRef.current;
     setCommitting(true);
     setError(undefined);

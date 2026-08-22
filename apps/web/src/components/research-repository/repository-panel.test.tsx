@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { createElement } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
   fireEvent,
@@ -14,6 +14,12 @@ import type {
   ResearchRepositoryBinding,
 } from "@opencanvas/shared/research-repository";
 import { RepositoryPanel } from "./repository-panel";
+
+const navigation = vi.hoisted(() => ({ useSearchParams: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  useSearchParams: navigation.useSearchParams,
+}));
 
 const binding = {
   provider: "github",
@@ -46,6 +52,10 @@ function jsonResponse(body: unknown, status = 200): Response {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+});
+
+beforeEach(() => {
+  navigation.useSearchParams.mockReturnValue(new URLSearchParams());
 });
 
 describe("RepositoryPanel", () => {
@@ -127,5 +137,51 @@ describe("RepositoryPanel", () => {
       );
       expect(artifactRequests.length).toBeGreaterThanOrEqual(2);
     });
+  });
+
+  it("opens the artifact selected in the URL", async () => {
+    navigation.useSearchParams.mockReturnValue(
+      new URLSearchParams("artifactId=index")
+    );
+    const artifact = {
+      artifactId: "index",
+      kind: "index",
+      path: "index.md",
+      commitSha: binding.headCommitSha,
+      blobSha: "b".repeat(40),
+      contentSha256: "c".repeat(64),
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/repository")) {
+        return jsonResponse({ status: readyStatus() });
+      }
+      if (url.endsWith("/repository/artifacts")) {
+        return jsonResponse({
+          artifacts: [artifact],
+          headCommitSha: binding.headCommitSha,
+        });
+      }
+      if (url.endsWith("/repository/artifacts?artifactId=index")) {
+        return jsonResponse({
+          artifact: { ...artifact, supported: true },
+          content: "# Research index",
+        });
+      }
+      return jsonResponse({ error: "Unexpected request" }, 500);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      createElement(RepositoryPanel, {
+        item: { id: "workspace-one", binding },
+      })
+    );
+
+    expect(await screen.findByDisplayValue("# Research index")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspace/items/workspace-one/repository/artifacts?artifactId=index",
+      { credentials: "include", cache: "no-store" }
+    );
   });
 });

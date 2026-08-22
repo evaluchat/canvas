@@ -113,6 +113,7 @@ describe("GET repository artifacts", () => {
         blobSha: "b".repeat(40),
         contentSha256:
           "b9ac715e5c8f6d0a73cc7cc154715ba72f214528586a6699cd6ebb762800208c",
+        supported: true,
       },
       content: "# Research index\n",
     });
@@ -123,6 +124,30 @@ describe("GET repository artifacts", () => {
       "index.md"
     );
     expect(harness.listArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("marks an artifact from an unsupported layout as read-only", async () => {
+    harness.getWorkspaceItem.mockResolvedValue({
+      ...item,
+      binding: { ...item.binding, layoutVersion: "1.1" },
+    });
+
+    const response = await GET(
+      new Request("http://localhost?artifactId=index"),
+      context
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      artifact: { artifactId: "index", supported: false },
+      content: "# Research index\n",
+    });
+    expect(harness.readArtifact).toHaveBeenCalledWith(
+      99,
+      { owner: "octocat", name: "private" },
+      "evaluchat/workspace",
+      "index.md"
+    );
   });
 
   it("returns 404 when a managed artifact is no longer present", async () => {

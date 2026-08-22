@@ -11,7 +11,7 @@ type ArtifactEditorProps = {
 };
 
 type ArtifactContentResponse = {
-  artifact?: RepositoryArtifactRef;
+  artifact?: RepositoryArtifactRef & { supported: boolean };
   content?: string;
   error?: string;
 };
@@ -46,11 +46,15 @@ export function ArtifactEditor({
   const [content, setContent] = useState("");
   const [savedContent, setSavedContent] = useState("");
   const [baseCommitSha, setBaseCommitSha] = useState<string>();
+  const [supported, setSupported] = useState<boolean>();
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<EditorError>();
   const [confirmation, setConfirmation] = useState<string>();
   const loadVersion = useRef(0);
+  const operationTokenRef = useRef(0);
+  const currentArtifactIdRef = useRef(artifactId);
+  currentArtifactIdRef.current = artifactId;
 
   const loadArtifact = useCallback(async () => {
     if (!artifactId) return;
@@ -81,6 +85,7 @@ export function ArtifactEditor({
       setContent(body.content);
       setSavedContent(body.content);
       setBaseCommitSha(body.artifact.commitSha);
+      setSupported(body.artifact.supported);
     } catch (cause) {
       if (version !== loadVersion.current) return;
       setBaseCommitSha(undefined);
@@ -99,6 +104,7 @@ export function ArtifactEditor({
     setContent("");
     setSavedContent("");
     setBaseCommitSha(undefined);
+    setSupported(undefined);
     setError(undefined);
     setConfirmation(undefined);
     if (artifactId) void loadArtifact();
@@ -107,8 +113,25 @@ export function ArtifactEditor({
     };
   }, [artifactId, loadArtifact, refreshKey]);
 
+  useEffect(() => {
+    operationTokenRef.current += 1;
+    setCommitting(false);
+  }, [artifactId]);
+
   async function commitChanges() {
-    if (!artifact || !baseCommitSha || content === savedContent) return;
+    if (
+      !artifact ||
+      !baseCommitSha ||
+      content === savedContent ||
+      supported === false
+    ) {
+      return;
+    }
+    const committedArtifactId = artifact.artifactId;
+    const operationToken = ++operationTokenRef.current;
+    const isCurrentOperation = () =>
+      committedArtifactId === currentArtifactIdRef.current &&
+      operationToken === operationTokenRef.current;
     setCommitting(true);
     setError(undefined);
     setConfirmation(undefined);
@@ -132,6 +155,7 @@ export function ArtifactEditor({
         }
       );
       const body = (await response.json()) as CommitResponse;
+      if (!isCurrentOperation()) return;
 
       if (!response.ok) {
         if (response.status === 409 && body.error === "stale_repository") {
@@ -160,6 +184,7 @@ export function ArtifactEditor({
       setConfirmation("Changes committed");
       onCommitted?.(body.commitSha);
     } catch (cause) {
+      if (!isCurrentOperation()) return;
       setError({
         message:
           cause instanceof Error
@@ -167,7 +192,7 @@ export function ArtifactEditor({
             : "Could not commit repository artifact",
       });
     } finally {
-      setCommitting(false);
+      if (isCurrentOperation()) setCommitting(false);
     }
   }
 
@@ -207,7 +232,13 @@ export function ArtifactEditor({
         </div>
         <button
           type="button"
-          disabled={!dirty || loading || committing || !baseCommitSha}
+          disabled={
+            supported === false ||
+            !dirty ||
+            loading ||
+            committing ||
+            !baseCommitSha
+          }
           onClick={() => void commitChanges()}
           className="rounded border border-slate-300 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -241,6 +272,14 @@ export function ArtifactEditor({
           {confirmation}
         </p>
       )}
+      {supported === false && (
+        <p
+          role="note"
+          className="mb-3 rounded border border-amber-200 bg-amber-50 p-2 text-sm text-amber-800"
+        >
+          This artifact version is not supported by this workspace
+        </p>
+      )}
 
       {loading ? (
         <div className="flex min-h-72 items-center justify-center rounded border border-slate-300 bg-slate-50 text-sm text-slate-500">
@@ -249,6 +288,7 @@ export function ArtifactEditor({
       ) : (
         <textarea
           aria-label={`Edit ${artifact.path}`}
+          disabled={supported === false}
           value={content}
           onChange={(event) => {
             setContent(event.target.value);

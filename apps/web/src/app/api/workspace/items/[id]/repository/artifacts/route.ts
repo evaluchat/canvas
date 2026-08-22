@@ -11,6 +11,7 @@ import {
   readArtifactBlob,
 } from "@/lib/workspace/research-repository/git-adapter";
 import {
+  isRepositoryLayoutVersionSupported,
   RepositoryLayoutError,
   resolveRepositoryArtifactPath,
 } from "@/lib/workspace/research-repository/layout";
@@ -60,9 +61,12 @@ export async function GET(request: Request, context: RouteContext) {
     );
     const artifactId = new URL(request.url).searchParams.get("artifactId");
     if (artifactId !== null) {
+      const supported = isRepositoryLayoutVersionSupported(
+        item.binding.layoutVersion
+      );
       const identity = resolveRepositoryArtifactPath(
         artifactId,
-        item.binding.layoutVersion
+        supported ? item.binding.layoutVersion : undefined
       );
       let result;
       try {
@@ -78,14 +82,17 @@ export async function GET(request: Request, context: RouteContext) {
         }
         throw error;
       }
-      const artifact = RepositoryArtifactRefSchema.parse({
-        ...identity,
-        commitSha: result.commitSha,
-        blobSha: result.blobSha,
-        contentSha256: createHash("sha256")
-          .update(result.content)
-          .digest("hex"),
-      });
+      const artifact = {
+        ...RepositoryArtifactRefSchema.parse({
+          ...identity,
+          commitSha: result.commitSha,
+          blobSha: result.blobSha,
+          contentSha256: createHash("sha256")
+            .update(result.content)
+            .digest("hex"),
+        }),
+        supported,
+      };
       return json({ artifact, content: result.content });
     }
     const result = await listRepositoryArtifactRefs(

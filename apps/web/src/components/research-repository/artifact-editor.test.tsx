@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { createElement } from "react";
+import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -29,9 +29,14 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function artifactResponse(content: string, sha = commitSha): Response {
+function artifactResponse(
+  content: string,
+  sha = commitSha,
+  responseArtifact: RepositoryArtifactRef = artifact,
+  supported = true
+): Response {
   return jsonResponse({
-    artifact: { ...artifact, commitSha: sha },
+    artifact: { ...responseArtifact, commitSha: sha, supported },
     content,
   });
 }
@@ -107,6 +112,132 @@ describe("ArtifactEditor", () => {
     expect(String(requestBody.idempotencyKey).length).toBeGreaterThanOrEqual(
       16
     );
+  });
+
+  it("ignores a commit result after switching artifacts", async () => {
+    const artifactBCommitSha = "e".repeat(40);
+    const artifactB = {
+      ...artifact,
+      artifactId: "readme",
+      kind: "readme",
+      path: "README.md",
+      commitSha: artifactBCommitSha,
+    } satisfies RepositoryArtifactRef;
+    const committedArtifactBSha = "f".repeat(40);
+    let resolveArtifactACommit!: (response: Response) => void;
+    const artifactACommit = new Promise<Response>((resolve) => {
+      resolveArtifactACommit = resolve;
+    });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("artifactId=index")) {
+          return artifactResponse("# Artifact A");
+        }
+        if (url.includes("artifactId=readme")) {
+          return artifactResponse(
+            "# Artifact B",
+            artifactBCommitSha,
+            artifactB
+          );
+        }
+        const body = JSON.parse(String(init?.body)) as {
+          artifactId: string;
+        };
+        return body.artifactId === "index"
+          ? artifactACommit
+          : jsonResponse({ commitSha: committedArtifactBSha });
+      }
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const onCommitted = vi.fn();
+
+    const view = render(
+      createElement(ArtifactEditor, {
+        workspaceItemId: "workspace-one",
+        artifact,
+        onCommitted,
+      })
+    );
+
+    fireEvent.change(await screen.findByDisplayValue("# Artifact A"), {
+      target: { value: "# Edited A" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    view.rerender(
+      createElement(ArtifactEditor, {
+        workspaceItemId: "workspace-one",
+        artifact: artifactB,
+        onCommitted,
+      })
+    );
+    const editorB = await screen.findByDisplayValue("# Artifact B");
+    fireEvent.change(editorB, { target: { value: "# Edited B" } });
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Commit changes",
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+
+    await act(async () => {
+      resolveArtifactACommit(jsonResponse({ commitSha: "d".repeat(40) }));
+      await artifactACommit;
+    });
+
+    expect(screen.queryByText("Changes committed")).toBeNull();
+    expect(onCommitted).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
+
+    expect(await screen.findByText("Changes committed")).toBeTruthy();
+    const commitBodies = fetchMock.mock.calls
+      .filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+      )
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(commitBodies[1]).toMatchObject({
+      artifactId: "readme",
+      baseCommitSha: artifactBCommitSha,
+      content: "# Edited B",
+      commitMessage: "Update README.md",
+    });
+    expect(onCommitted).toHaveBeenCalledOnce();
+    expect(onCommitted).toHaveBeenCalledWith(committedArtifactBSha);
+  });
+
+  it("renders unsupported artifacts as read-only", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        artifactResponse("# Original", commitSha, artifact, false)
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      createElement(ArtifactEditor, {
+        workspaceItemId: "workspace-one",
+        artifact,
+      })
+    );
+
+    const editor = (await screen.findByDisplayValue(
+      "# Original"
+    )) as HTMLTextAreaElement;
+    expect(editor.disabled).toBe(true);
+    expect(
+      screen.getByText(
+        "This artifact version is not supported by this workspace"
+      )
+    ).toBeTruthy();
+    const commitButton = screen.getByRole("button", {
+      name: "Commit changes",
+    });
+    expect((commitButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(commitButton);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("offers a refresh after a stale repository response and refetches", async () => {

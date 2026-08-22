@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type {
   RepositoryArtifactRef,
   RepositoryStatus,
@@ -38,6 +39,10 @@ function BoundRepositoryPanel({
 }: {
   item: { id: string; binding: ResearchRepositoryBinding };
 }) {
+  const searchParams = useSearchParams();
+  const [selectedArtifactId, setSelectedArtifactId] = useState(
+    () => searchParams.get("artifactId") ?? undefined
+  );
   const [available, setAvailable] = useState<boolean>();
   const [status, setStatus] = useState<RepositoryStatus>();
   const [selectedArtifact, setSelectedArtifact] =
@@ -180,9 +185,12 @@ function BoundRepositoryPanel({
       <div className="grid gap-6 p-5 md:grid-cols-[minmax(12rem,18rem)_minmax(0,1fr)]">
         <RepositoryBrowser
           workspaceItemId={item.id}
-          selectedArtifactId={selectedArtifact?.artifactId}
+          selectedArtifactId={selectedArtifactId}
           refreshKey={browserRefreshKey}
-          onSelectArtifact={setSelectedArtifact}
+          onSelectArtifact={(artifact) => {
+            setSelectedArtifact(artifact);
+            setSelectedArtifactId(artifact?.artifactId);
+          }}
         />
         <ArtifactEditor
           workspaceItemId={item.id}

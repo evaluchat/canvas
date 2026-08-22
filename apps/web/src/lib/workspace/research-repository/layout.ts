@@ -29,6 +29,12 @@ export class RepositoryLayoutError extends Error {
 const COMPONENT = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
 const ARTIFACT_ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 
+export function isRepositoryLayoutVersionSupported(
+  layoutVersion: string
+): boolean {
+  return layoutVersion === "1.0";
+}
+
 const FIXED_ARTIFACTS = new Map<string, RepositoryArtifactIdentity>([
   [
     "workspace-manifest",
@@ -51,7 +57,7 @@ const FIXED_ARTIFACTS = new Map<string, RepositoryArtifactIdentity>([
 ]);
 
 function assertLayoutVersion(layoutVersion: string): void {
-  if (layoutVersion !== "1.0") {
+  if (!isRepositoryLayoutVersionSupported(layoutVersion)) {
     throw new RepositoryLayoutError(
       "UNSUPPORTED_LAYOUT",
       `Unsupported research repository layout ${layoutVersion}`

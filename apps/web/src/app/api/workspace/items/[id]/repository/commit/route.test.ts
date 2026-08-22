@@ -153,6 +153,20 @@ describe("POST repository artifact commit", () => {
     expect(harness.verifyUserAuthenticated).not.toHaveBeenCalled();
   });
 
+  it("rejects commits to an unsupported repository layout", async () => {
+    harness.getWorkspaceItem.mockResolvedValue({
+      ...item,
+      binding: { ...item.binding, layoutVersion: "1.1" },
+    });
+
+    const response = await POST(request(), context);
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "UNSUPPORTED_LAYOUT" });
+    expect(harness.claimOperation).not.toHaveBeenCalled();
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
+  });
+
   it("replays a completed key without a second GitHub commit", async () => {
     harness.claimOperation
       .mockResolvedValueOnce(pendingOperation)

@@ -6,3 +6,7 @@
 export function isGithubResearchWorkspacesEnabled(): boolean {
   return process.env.GITHUB_RESEARCH_WORKSPACES_ENABLED === "true";
 }
+
+export function isGithubResearchRepositoryAiEnabled(): boolean {
+  return process.env.GITHUB_RESEARCH_REPOSITORY_AI_ENABLED === "true";
+}

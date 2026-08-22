@@ -179,12 +179,17 @@ export function WorkspaceHome({
                   <WorkspaceItemTypeIcon item={item} />
                   {item.kind === "research_repository" ? (
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-base font-medium text-slate-900">
-                        {workspaceItemTitle(item)}
-                      </p>
-                      <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                        {workspaceItemKicker(item)}
-                      </span>
+                      <Link
+                        href={workspaceItemHref(item)}
+                        className="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <p className="truncate text-base font-medium text-slate-900">
+                          {workspaceItemTitle(item)}
+                        </p>
+                        <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                          {workspaceItemKicker(item)}
+                        </span>
+                      </Link>
                       <ResearchRepositoryStatus item={item} />
                     </div>
                   ) : (

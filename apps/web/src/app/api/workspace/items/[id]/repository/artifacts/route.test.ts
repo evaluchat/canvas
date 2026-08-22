@@ -7,6 +7,7 @@ const harness = vi.hoisted(() => ({
   readCredentials: vi.fn(),
   getRepository: vi.fn(),
   listArtifacts: vi.fn(),
+  readArtifact: vi.fn(),
 }));
 
 vi.mock("@/lib/research-workspaces-enabled.server", () => ({
@@ -26,6 +27,7 @@ vi.mock("@/lib/workspace/research-repository/github-app", () => ({
 }));
 vi.mock("@/lib/workspace/research-repository/git-adapter", () => ({
   listRepositoryArtifactRefs: harness.listArtifacts,
+  readArtifactBlob: harness.readArtifact,
 }));
 
 import { GET } from "./route";
@@ -63,6 +65,11 @@ describe("GET repository artifacts", () => {
       artifacts: [{ artifactId: "index", path: "index.md" }],
       commitSha: "a".repeat(40),
     });
+    harness.readArtifact.mockResolvedValue({
+      content: "# Research index\n",
+      blobSha: "b".repeat(40),
+      commitSha: "c".repeat(40),
+    });
   });
 
   it("returns 404 before authentication while the flag is off", async () => {
@@ -87,6 +94,49 @@ describe("GET repository artifacts", () => {
       "evaluchat/workspace",
       "1.0"
     );
+  });
+
+  it("reads one managed artifact by server-resolved artifact id", async () => {
+    const response = await GET(
+      new Request("http://localhost?artifactId=index"),
+      context
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({
+      artifact: {
+        artifactId: "index",
+        kind: "index",
+        path: "index.md",
+        commitSha: "c".repeat(40),
+        blobSha: "b".repeat(40),
+        contentSha256:
+          "b9ac715e5c8f6d0a73cc7cc154715ba72f214528586a6699cd6ebb762800208c",
+      },
+      content: "# Research index\n",
+    });
+    expect(harness.readArtifact).toHaveBeenCalledWith(
+      99,
+      { owner: "octocat", name: "private" },
+      "evaluchat/workspace",
+      "index.md"
+    );
+    expect(harness.listArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when a managed artifact is no longer present", async () => {
+    harness.readArtifact.mockRejectedValue(
+      Object.assign(new Error("Artifact not found"), { status: 404 })
+    );
+
+    const response = await GET(
+      new Request("http://localhost?artifactId=index"),
+      context
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "Artifact not found" });
   });
 
   it("returns a redacted 4xx layout error without logging its path", async () => {

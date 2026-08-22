@@ -25,7 +25,7 @@ import { MethodRunCanvas } from "./method-run-canvas";
 import { EvidenceCanvas } from "./evidence-canvas";
 import { LedgerCanvas } from "./ledger-canvas";
 import { LedgerSnapshotCanvas } from "./ledger-snapshot-canvas";
-import { ResearchRepositoryStatus } from "./research-repository-status";
+import { RepositoryPanel } from "@/components/research-repository/repository-panel";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -291,9 +291,8 @@ export function WorkspaceCanvas() {
   if (item.kind === "research_repository") {
     return (
       <main className="min-h-screen bg-slate-50 p-8">
-        <div className="mx-auto max-w-3xl rounded-lg border bg-white p-6">
-          <h1 className="text-lg font-semibold">Private research repository</h1>
-          <ResearchRepositoryStatus item={item} />
+        <div className="mx-auto max-w-6xl">
+          <RepositoryPanel item={item} />
         </div>
       </main>
     );

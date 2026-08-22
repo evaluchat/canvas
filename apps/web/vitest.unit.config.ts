@@ -6,7 +6,7 @@ export default defineConfig({
     jsx: "automatic",
   },
   test: {
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },
   resolve: {
     alias: {

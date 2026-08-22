@@ -1,11 +1,19 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { RepositoryArtifactRefSchema } from "@opencanvas/shared/research-repository";
 import { isGithubResearchWorkspacesEnabled } from "@/lib/research-workspaces-enabled.server";
 import { verifyUserAuthenticated } from "@/lib/supabase/verify_user_server";
 import { getWorkspaceItem } from "@/lib/workspace/store";
 import { readGithubResearchCredentials } from "@/lib/workspace/research-repository/credentials";
 import { getGithubInstallationRepository } from "@/lib/workspace/research-repository/github-app";
-import { listRepositoryArtifactRefs } from "@/lib/workspace/research-repository/git-adapter";
-import { RepositoryLayoutError } from "@/lib/workspace/research-repository/layout";
+import {
+  listRepositoryArtifactRefs,
+  readArtifactBlob,
+} from "@/lib/workspace/research-repository/git-adapter";
+import {
+  RepositoryLayoutError,
+  resolveRepositoryArtifactPath,
+} from "@/lib/workspace/research-repository/layout";
 import { repositoryRouteErrorDetails } from "@/lib/workspace/research-repository/route-errors";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +27,12 @@ function json(body: unknown, status = 200) {
   });
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+function errorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object" || !("status" in error)) return;
+  return typeof error.status === "number" ? error.status : undefined;
+}
+
+export async function GET(request: Request, context: RouteContext) {
   if (!isGithubResearchWorkspacesEnabled()) {
     return json({ error: "Not found" }, 404);
   }
@@ -45,6 +58,36 @@ export async function GET(_request: Request, context: RouteContext) {
       item.binding.installationId,
       item.binding.repositoryId
     );
+    const artifactId = new URL(request.url).searchParams.get("artifactId");
+    if (artifactId !== null) {
+      const identity = resolveRepositoryArtifactPath(
+        artifactId,
+        item.binding.layoutVersion
+      );
+      let result;
+      try {
+        result = await readArtifactBlob(
+          item.binding.installationId,
+          repository,
+          item.binding.branch,
+          identity.path
+        );
+      } catch (error) {
+        if (errorStatus(error) === 404) {
+          return json({ error: "Artifact not found" }, 404);
+        }
+        throw error;
+      }
+      const artifact = RepositoryArtifactRefSchema.parse({
+        ...identity,
+        commitSha: result.commitSha,
+        blobSha: result.blobSha,
+        contentSha256: createHash("sha256")
+          .update(result.content)
+          .digest("hex"),
+      });
+      return json({ artifact, content: result.content });
+    }
     const result = await listRepositoryArtifactRefs(
       item.binding.installationId,
       repository,

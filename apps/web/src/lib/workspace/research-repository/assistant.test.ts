@@ -17,6 +17,7 @@ vi.mock("@/constants", () => ({ LANGGRAPH_API_URL: "http://langgraph" }));
 
 import {
   MAX_CURRENT_ARTIFACT_BYTES,
+  MAX_CURRENT_ARTIFACT_PATH_BYTES,
   ResearchRepositoryAssistantDisabledError,
   ResearchRepositoryAssistantPayloadError,
   streamResearchRepositoryAssistant,
@@ -79,6 +80,30 @@ describe("research repository assistant client", () => {
         currentArtifact: {
           path: "large.md",
           text: "x".repeat(MAX_CURRENT_ARTIFACT_BYTES + 1),
+        },
+      })
+    ).toThrow(ResearchRepositoryAssistantPayloadError);
+    expect(harness.stream).not.toHaveBeenCalled();
+  });
+
+  it("permits the maximum path size and rejects an oversized path", () => {
+    streamResearchRepositoryAssistant({
+      conversation: [{ role: "user", content: "Review this" }],
+      currentArtifact: {
+        path: "x".repeat(MAX_CURRENT_ARTIFACT_PATH_BYTES),
+        text: "Current text",
+      },
+    });
+    expect(harness.stream).toHaveBeenCalledOnce();
+
+    harness.stream.mockClear();
+
+    expect(() =>
+      streamResearchRepositoryAssistant({
+        conversation: [{ role: "user", content: "Review this" }],
+        currentArtifact: {
+          path: "x".repeat(MAX_CURRENT_ARTIFACT_PATH_BYTES + 1),
+          text: "Current text",
         },
       })
     ).toThrow(ResearchRepositoryAssistantPayloadError);

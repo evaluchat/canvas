@@ -7,6 +7,8 @@ import {
 
 export const RESEARCH_REPOSITORY_ASSISTANT_ID = "research_repository";
 export const MAX_CURRENT_ARTIFACT_BYTES = 32 * 1024;
+// Repository artifact paths are resolved server-side, so 1 KiB is ample.
+export const MAX_CURRENT_ARTIFACT_PATH_BYTES = 1024;
 export const MAX_CONVERSATION_MESSAGES = 24;
 export const MAX_CONVERSATION_BYTES = 64 * 1024;
 
@@ -71,6 +73,15 @@ function validateInput(input: ResearchRepositoryAssistantInput): void {
   ) {
     throw new ResearchRepositoryAssistantPayloadError(
       `Current artifact exceeds ${MAX_CURRENT_ARTIFACT_BYTES} bytes`
+    );
+  }
+
+  if (
+    input.currentArtifact &&
+    byteLength(input.currentArtifact.path) > MAX_CURRENT_ARTIFACT_PATH_BYTES
+  ) {
+    throw new ResearchRepositoryAssistantPayloadError(
+      `Current artifact path exceeds ${MAX_CURRENT_ARTIFACT_PATH_BYTES} bytes`
     );
   }
 }

@@ -26,6 +26,10 @@ import {
   startRepositoryOperation,
 } from "@/lib/workspace/research-repository/operations";
 import { repositoryRouteErrorDetails } from "@/lib/workspace/research-repository/route-errors";
+import {
+  artifactKindFromId,
+  validateArtifactFrontMatter,
+} from "@/lib/workspace/research-repository/authoring";
 
 export const dynamic = "force-dynamic";
 
@@ -189,6 +193,16 @@ export async function POST(request: Request, context: RouteContext) {
         ? 409
         : 500
     );
+  }
+
+  if (artifactKindFromId(artifact.artifactId)) {
+    const validation = validateArtifactFrontMatter(
+      artifact.artifactId,
+      body.content
+    );
+    if (!validation.ok) {
+      return json({ error: "INVALID_FRONT_MATTER" }, 422);
+    }
   }
 
   try {

@@ -1,7 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RepositoryArtifactRef } from "@opencanvas/shared/research-repository";
+import {
+  artifactKindFromId,
+  validateArtifactFrontMatter,
+} from "@/lib/workspace/research-repository/authoring";
 
 type ArtifactEditorProps = {
   workspaceItemId: string;
@@ -118,6 +122,15 @@ export function ArtifactEditor({
     setCommitting(false);
   }, [artifactId, workspaceItemId]);
 
+  const dirty = content !== savedContent;
+  const frontMatterError = useMemo(() => {
+    if (!dirty || !artifactId || !artifactKindFromId(artifactId)) return;
+    const validation = validateArtifactFrontMatter(artifactId, content);
+    return validation.ok
+      ? undefined
+      : `Front-matter is not valid YAML: ${validation.reason}`;
+  }, [artifactId, content, dirty]);
+
   async function commitChanges() {
     if (
       !artifact ||
@@ -126,6 +139,18 @@ export function ArtifactEditor({
       supported === false
     ) {
       return;
+    }
+    if (artifactKindFromId(artifact.artifactId)) {
+      const validation = validateArtifactFrontMatter(
+        artifact.artifactId,
+        content
+      );
+      if (!validation.ok) {
+        setError({
+          message: `Front-matter is not valid YAML: ${validation.reason}`,
+        });
+        return;
+      }
     }
     const committedWorkspaceItemId = workspaceItemId;
     const committedArtifactId = artifact.artifactId;
@@ -213,8 +238,6 @@ export function ArtifactEditor({
     );
   }
 
-  const dirty = content !== savedContent;
-
   return (
     <section aria-labelledby="artifact-editor-heading" className="min-w-0">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -240,7 +263,8 @@ export function ArtifactEditor({
             !dirty ||
             loading ||
             committing ||
-            !baseCommitSha
+            !baseCommitSha ||
+            Boolean(frontMatterError)
           }
           onClick={() => void commitChanges()}
           className="rounded border border-slate-300 bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -266,6 +290,14 @@ export function ArtifactEditor({
             </button>
           )}
         </div>
+      )}
+      {frontMatterError && (
+        <p
+          role="alert"
+          className="mb-3 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        >
+          {frontMatterError}
+        </p>
       )}
       {confirmation && (
         <p

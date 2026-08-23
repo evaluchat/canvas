@@ -22,6 +22,24 @@ const artifact = {
   contentSha256: "c".repeat(64),
 } satisfies RepositoryArtifactRef;
 
+const methodArtifact = {
+  ...artifact,
+  artifactId: "method.synthetic-method",
+  kind: "method",
+  path: "methods/synthetic-method/synthetic-method.en.md",
+} satisfies RepositoryArtifactRef;
+
+const validMethod = `---
+type: Method
+id: synthetic-method
+status: draft
+version: 1.0.0
+title: Synthetic method
+description: A safe synthetic method.
+---
+
+# Synthetic method`;
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -112,6 +130,42 @@ describe("ArtifactEditor", () => {
     expect(String(requestBody.idempotencyKey).length).toBeGreaterThanOrEqual(
       16
     );
+  });
+
+  it("blocks an invalid authorable artifact before sending a commit", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        artifactResponse(validMethod, commitSha, methodArtifact)
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      createElement(ArtifactEditor, {
+        workspaceItemId: "workspace-one",
+        artifact: methodArtifact,
+      })
+    );
+
+    const editor = await screen.findByRole("textbox", {
+      name: "Edit methods/synthetic-method/synthetic-method.en.md",
+    });
+    await waitFor(() =>
+      expect((editor as HTMLTextAreaElement).value).toBe(validMethod)
+    );
+    fireEvent.change(editor, {
+      target: { value: validMethod.replace("status: draft", "status: [") },
+    });
+
+    expect(
+      await screen.findByText(/Front-matter is not valid YAML:/)
+    ).toBeTruthy();
+    const commitButton = screen.getByRole("button", {
+      name: "Commit changes",
+    }) as HTMLButtonElement;
+    expect(commitButton.disabled).toBe(true);
+    fireEvent.click(commitButton);
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it("ignores a commit result after switching artifacts", async () => {

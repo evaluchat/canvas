@@ -98,7 +98,28 @@ const failedWithResultOperation = {
   errorCode: "COMMIT_LANDED_HEAD_UPDATE_FAILED",
 };
 
-function request() {
+const validMethodContent = `---
+type: Method
+id: synthetic-method
+lang: en
+origin: native
+status: draft
+version: 1.0.0
+title: Synthetic method
+description: A safe synthetic method.
+---
+
+# Synthetic method`;
+
+function request(
+  overrides: Partial<{
+    artifactId: string;
+    baseCommitSha: string;
+    content: string;
+    commitMessage: string;
+    idempotencyKey: string;
+  }> = {}
+) {
   return new Request("http://localhost", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -108,6 +129,7 @@ function request() {
       content: "unique file text that must not enter Store",
       commitMessage: "Update index",
       idempotencyKey: "idempotency-key-0001",
+      ...overrides,
     }),
   });
 }
@@ -167,6 +189,72 @@ describe("POST repository artifact commit", () => {
     expect(harness.commitArtifacts).not.toHaveBeenCalled();
   });
 
+  it("commits an authorable artifact with valid front-matter", async () => {
+    const response = await POST(
+      request({
+        artifactId: "method.synthetic-method",
+        content: validMethodContent,
+        commitMessage: "Update synthetic method",
+      }),
+      context
+    );
+
+    expect(response.status).toBe(200);
+    expect(harness.commitArtifacts).toHaveBeenCalledWith(
+      99,
+      { owner: "octocat", name: "private" },
+      "evaluchat/workspace",
+      expect.objectContaining({
+        files: [
+          {
+            path: "methods/synthetic-method/synthetic-method.en.md",
+            content: validMethodContent,
+          },
+        ],
+      })
+    );
+  });
+
+  it("rejects invalid YAML before starting or committing an operation", async () => {
+    const response = await POST(
+      request({
+        artifactId: "method.synthetic-method",
+        content: validMethodContent.replace("status: draft", "status: ["),
+      }),
+      context
+    );
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "INVALID_FRONT_MATTER" });
+    expect(harness.claimOperation).toHaveBeenCalledOnce();
+    expect(harness.startOperation).not.toHaveBeenCalled();
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("rejects a multi-document front-matter stream", async () => {
+    const response = await POST(
+      request({
+        artifactId: "method.synthetic-method",
+        content: `${validMethodContent.replace("\n\n# Synthetic method", "")}\n---\ntype: Method\n---`,
+      }),
+      context
+    );
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "INVALID_FRONT_MATTER" });
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("does not validate arbitrary text in a non-front-matter artifact", async () => {
+    const response = await POST(
+      request({ content: "plain markdown with: [arbitrary text" }),
+      context
+    );
+
+    expect(response.status).toBe(200);
+    expect(harness.commitArtifacts).toHaveBeenCalledOnce();
+  });
+
   it("replays a completed key without a second GitHub commit", async () => {
     harness.claimOperation
       .mockResolvedValueOnce(pendingOperation)
@@ -212,6 +300,25 @@ describe("POST repository artifact commit", () => {
     });
     expect(storeFacingCalls).not.toContain("unique file text");
     expect(storeFacingCalls).not.toContain("Update index");
+  });
+
+  it("replays a successful authorable commit before validating new content", async () => {
+    harness.claimOperation.mockResolvedValue(succeededOperation);
+
+    const response = await POST(
+      request({
+        artifactId: "method.synthetic-method",
+        content: "---\ntype: Method\nunsafe: [\n---",
+      }),
+      context
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      operationId: "operation-one",
+      commitSha: resultCommitSha,
+    });
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
   });
 
   it("repairs a stale binding head when replaying a succeeded operation", async () => {

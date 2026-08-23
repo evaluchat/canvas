@@ -126,6 +126,10 @@ export function ArtifactEditor({
     setCommitting(false);
   }, [artifactId, workspaceItemId]);
 
+  useEffect(() => {
+    idempotencyKeyRef.current = undefined;
+  }, [content]);
+
   const dirty = content !== savedContent;
   const frontMatterError = useMemo(() => {
     if (!dirty || !artifactId || !artifactKindFromId(artifactId)) return;

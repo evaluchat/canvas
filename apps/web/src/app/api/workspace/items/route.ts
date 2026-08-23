@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isGithubResearchWorkspacesEnabled } from "@/lib/research-workspaces-enabled.server";
 import { verifyUserAuthenticated } from "@/lib/supabase/verify_user_server";
 import {
+  createResearchRepositoryItem,
   createMethodWorkspaceItem,
   createLedgerWorkspaceItem,
   createWorkspaceItem,
@@ -9,6 +11,7 @@ import {
   UnsupportedMethodError,
   UnsupportedTemplateError,
   LedgerNotReadyError,
+  ResearchRepositoryBindingError,
 } from "@/lib/workspace/store";
 
 async function authenticatedUser() {
@@ -23,8 +26,11 @@ export async function GET() {
 
   try {
     await ensureDefaultWorkspaceItem(user.id);
+    const items = await listWorkspaceItems(user.id, { email: user.email });
     return NextResponse.json({
-      items: await listWorkspaceItems(user.id, { email: user.email }),
+      items: isGithubResearchWorkspacesEnabled()
+        ? items
+        : items.filter((item) => item.kind !== "research_repository"),
     });
   } catch (error) {
     console.error("[workspace] failed to list items", error);
@@ -36,6 +42,22 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const githubResearchEnabled = isGithubResearchWorkspacesEnabled();
+  if (!githubResearchEnabled) {
+    try {
+      const gatedBody = (await request.clone().json()) as unknown;
+      if (
+        gatedBody !== null &&
+        typeof gatedBody === "object" &&
+        (gatedBody as { kind?: unknown }).kind === "research_repository"
+      ) {
+        return NextResponse.json({ error: "Not found" }, { status: 404 });
+      }
+    } catch {
+      // Preserve the existing authentication and invalid-JSON response order.
+    }
+  }
+
   const user = await authenticatedUser();
   if (!user)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -64,13 +86,34 @@ export async function POST(request: NextRequest) {
       : undefined;
   const hasMethodId = methodId !== undefined;
   const isLedger = parsedBody.kind === "ledger";
+  const isResearchRepository = parsedBody.kind === "research_repository";
+  if (isResearchRepository && !githubResearchEnabled) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  const repositoryId = parsedBody.repositoryId;
+  const installationId = parsedBody.installationId;
+  if (
+    isResearchRepository &&
+    (!Number.isSafeInteger(repositoryId) ||
+      Number(repositoryId) <= 0 ||
+      !Number.isSafeInteger(installationId) ||
+      Number(installationId) <= 0)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Repository creation requires valid repository and installation ids",
+      },
+      { status: 400 }
+    );
+  }
   if (isLedger && !hasMethodId) {
     return NextResponse.json(
       { error: "Ledger creation requires methodId" },
       { status: 400 }
     );
   }
-  if (!hasMethodId && templateId === undefined) {
+  if (!isResearchRepository && !hasMethodId && templateId === undefined) {
     return NextResponse.json(
       { error: "Unsupported template" },
       { status: 400 }
@@ -78,11 +121,16 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const item = isLedger
-      ? await createLedgerWorkspaceItem(user.id, methodId!)
-      : hasMethodId
-        ? await createMethodWorkspaceItem(user.id, methodId)
-        : await createWorkspaceItem(user.id, templateId!);
+    const item = isResearchRepository
+      ? await createResearchRepositoryItem(user.id, {
+          repositoryId: repositoryId as number,
+          installationId: installationId as number,
+        })
+      : isLedger
+        ? await createLedgerWorkspaceItem(user.id, methodId!)
+        : hasMethodId
+          ? await createMethodWorkspaceItem(user.id, methodId)
+          : await createWorkspaceItem(user.id, templateId!);
     return NextResponse.json({ item }, { status: 201 });
   } catch (error) {
     if (error instanceof UnsupportedMethodError) {
@@ -99,6 +147,12 @@ export async function POST(request: NextRequest) {
     }
     if (error instanceof LedgerNotReadyError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (error instanceof ResearchRepositoryBindingError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 400 }
+      );
     }
     console.error("[workspace] failed to create item", error);
     return NextResponse.json(

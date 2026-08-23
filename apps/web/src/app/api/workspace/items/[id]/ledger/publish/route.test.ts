@@ -196,16 +196,7 @@ describe("ledger publish route", () => {
     );
   });
 
-  it("persists an automatically merged ledger publication returned by GitHub", async () => {
-    harness.openLedgerPullRequest.mockResolvedValueOnce({
-      number: 85,
-      url: "https://github.com/evaluchat/research/pull/85",
-      branch: "ledger/ledger_demo-abcdef012345",
-      status: "merged",
-      mergedAt: "2026-08-20T10:00:00.000Z",
-      lintConclusion: "success",
-    });
-
+  it("persists a draft ledger publication and does not claim a merge", async () => {
     const response = await POST(request({ values: validValues }), context());
 
     expect(response.status).toBe(200);
@@ -214,16 +205,18 @@ describe("ledger publish route", () => {
       "wi_snapshot",
       {
         publication: {
-          status: "merged",
+          status: "draft",
           pullRequestUrl: "https://github.com/evaluchat/research/pull/85",
           pullRequestNumber: 85,
-          mergedAt: "2026-08-20T10:00:00.000Z",
         },
       }
     );
-    expect(await response.json()).toMatchObject({
-      publication: { status: "merged", mergedAt: "2026-08-20T10:00:00.000Z" },
+    const body = await response.json();
+    expect(body).toMatchObject({
+      publication: { status: "draft", pullRequestNumber: 85 },
     });
+    expect(body.publication.mergedAt).toBeUndefined();
+    expect(body.autoMergeError).toBeUndefined();
   });
 
   it("does not create a second PR for an already published snapshot", async () => {

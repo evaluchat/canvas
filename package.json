@@ -19,7 +19,8 @@
     "format": "turbo format",
     "format:check": "turbo format:check",
     "lint": "turbo lint",
-    "lint:fix": "turbo lint:fix"
+    "lint:fix": "turbo lint:fix",
+    "check:docs-allowlist": "bash scripts/check-docs-allowlist.sh"
   },
   "packageManager": "yarn@1.22.22",
   "resolutions": {

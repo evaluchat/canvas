@@ -36,11 +36,13 @@
     "@eslint/js": "^9.12.0",
     "@tsconfig/recommended": "^1.0.8",
     "@types/eslint__js": "^8.42.3",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20",
     "@typescript-eslint/eslint-plugin": "^8.12.2",
     "@typescript-eslint/parser": "^8.8.1",
     "eslint": "^8",
     "eslint-plugin-unused-imports": "^4.1.4",
+    "js-yaml": "^4.1.1",
     "prettier": "^3.3.3",
     "prosemirror-model": "^1.0.0",
     "react": "^19.0.0",
@@ -51,6 +53,7 @@
     "vitest": "^3.0.4"
   },
   "dependencies": {
-    "@langchain/core": "^1.2.5"
+    "@langchain/core": "^1.2.5",
+    "zod": "^3.23.8"
   }
 }

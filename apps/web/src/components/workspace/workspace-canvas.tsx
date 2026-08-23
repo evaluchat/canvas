@@ -13,6 +13,7 @@ import { convertToOpenAIFormat } from "@/lib/convert_messages";
 import { OC_HIDE_FROM_UI_KEY } from "@opencanvas/shared/constants";
 import {
   FINDING_STARTER_TEMPLATE_ID,
+  isUsableResearchRepository,
   type MarkdownWorkspaceItem,
 } from "@/lib/workspace/types";
 import { workspaceItemTitle } from "@/lib/workspace/display";
@@ -25,6 +26,7 @@ import { MethodRunCanvas } from "./method-run-canvas";
 import { EvidenceCanvas } from "./evidence-canvas";
 import { LedgerCanvas } from "./ledger-canvas";
 import { LedgerSnapshotCanvas } from "./ledger-snapshot-canvas";
+import { RepositoryPanel } from "@/components/research-repository/repository-panel";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -287,6 +289,24 @@ export function WorkspaceCanvas() {
   }
 
   const evidenceThreadId = searchParams.get("evidence");
+  if (item.kind === "research_repository") {
+    if (!isUsableResearchRepository(item)) {
+      return (
+        <main className="min-h-screen bg-slate-50 p-8">
+          <p className="text-sm text-amber-800">
+            Repository binding is unusable
+          </p>
+        </main>
+      );
+    }
+    return (
+      <main className="min-h-screen bg-slate-50 p-8">
+        <div className="mx-auto max-w-6xl">
+          <RepositoryPanel item={item} />
+        </div>
+      </main>
+    );
+  }
   if (item.kind === "ledger") {
     return <LedgerCanvas item={item} />;
   }

@@ -6,6 +6,9 @@ export const RESEARCH_REPOSITORY = "evaluchat/research";
 type GithubJson = Record<string, any>;
 
 export function githubHeaders(): HeadersInit {
+  // Catalogue publisher app (GITHUB_CATALOGUE_APP_ID / GITHUB_CATALOGUE_PRIVATE_KEY)
+  // is a maintainer step: createGithubInstallationOctokit needs an installation
+  // id we do not resolve here. Runtime credential remains VALERY_GITHUB_TOKEN.
   const token = process.env.VALERY_GITHUB_TOKEN;
   if (!token) throw new Error("VALERY_GITHUB_TOKEN is not configured");
   return {
@@ -187,11 +190,8 @@ export type OpenLedgerPullRequestResult = {
   number: number;
   url: string;
   branch: string;
-  status: "draft" | "merged";
-  mergedAt?: string;
+  status: "draft";
   lintConclusion?: string;
-  /** An automatic merge failure leaves the draft PR available for human merge. */
-  autoMergeError?: string;
 };
 
 export function ledgerBranch(input: OpenLedgerPullRequestInput): string {
@@ -227,17 +227,10 @@ async function sourceCommitIsOnMainLineage(
   }
 }
 
-function approvalBody(input: OpenLedgerPullRequestInput): string {
-  return [
-    "Auto-approved: system-generated Evidence Ledger (evaluation of evaluchat ledger service). Integrity criteria met (render_hash deterministic, source_commit pinned, consent confirmed, okf-lint pass).",
-    `Fingerprint: ${input.inputFingerprint}`,
-  ].join("\n");
-}
-
 /**
- * Create exactly one immutable ledger file in a draft PR. Draft PRs are kept
- * deliberately: GitHub permits their review and squash merge, while a failed
- * integrity gate still leaves the established human-review workflow intact.
+ * Create exactly one immutable ledger file in a draft PR. Integrity gates
+ * still run (lint, render hash, consent, source lineage) but never ready,
+ * approve, or merge — human review completes publication.
  */
 export async function openLedgerPullRequest(
   input: OpenLedgerPullRequestInput
@@ -307,66 +300,7 @@ export async function openLedgerPullRequest(
   );
   if (!sourceCommitValid) return baseResult;
 
-  try {
-    await githubRequest(`/repos/${RESEARCH_REPOSITORY}/pulls/${number}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ draft: false }),
-    });
-    await githubRequest(
-      `/repos/${RESEARCH_REPOSITORY}/pulls/${number}/reviews`,
-      jsonBody({ event: "APPROVE", body: approvalBody(input) })
-    );
-    const merge = await githubRequest(
-      `/repos/${RESEARCH_REPOSITORY}/pulls/${number}/merge`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ merge_method: "squash", sha: headSha }),
-      }
-    );
-    if (merge.merged !== true) {
-      throw new Error(
-        `GitHub did not merge ledger pull request: ${String(merge.message || "merge was not completed")}`
-      );
-    }
-    let mergedAt =
-      typeof merge.merged_at === "string" ? merge.merged_at : undefined;
-    if (!mergedAt) {
-      try {
-        mergedAt = (await getLedgerPullRequestStatus(number)).mergedAt;
-      } catch {
-        // The merge response is authoritative. Retain a publication timestamp
-        // even if the follow-up read is temporarily unavailable; the status
-        // refresh route will reconcile it with GitHub's merged_at value.
-      }
-    }
-    return {
-      ...baseResult,
-      status: "merged",
-      mergedAt: mergedAt || new Date().toISOString(),
-    };
-  } catch (error) {
-    try {
-      const status = await getLedgerPullRequestStatus(number);
-      if (status.merged) {
-        return {
-          ...baseResult,
-          status: "merged",
-          mergedAt: status.mergedAt,
-        };
-      }
-    } catch {
-      // Preserve the recoverable draft fallback when GitHub cannot confirm it.
-    }
-    // The PR and approval remain visible for a human to complete the merge.
-    // Return draft state so the route can persist that recoverable fallback.
-    return {
-      ...baseResult,
-      autoMergeError:
-        error instanceof Error ? error.message : "Automatic merge failed",
-    };
-  }
+  return baseResult;
 }
 
 export type OpenEvidencePullRequestInput = {
@@ -441,7 +375,7 @@ export async function findExistingEvidencePullRequest(
   };
 }
 
-/** Open and, when policy permits, merge the bot-authored research PR. */
+/** Open a draft bot-authored research PR. Never ready, approve, or merge. */
 export async function openEvidencePullRequest(
   input: OpenEvidencePullRequestInput
 ): Promise<OpenEvidencePullRequestResult> {
@@ -483,6 +417,7 @@ export async function openEvidencePullRequest(
         title: `docs(evidence): ${input.methodId} evidence ${input.timestampSlug}`,
         head: branch,
         base: "main",
+        draft: true,
         body: [
           "This bot-authored evidence contribution was assembled from one concluded method run.",
           "",
@@ -530,27 +465,13 @@ export async function openEvidencePullRequest(
       okfLintPassed: lint.passed,
     })
   ) {
-    const merge = await githubRequest(
-      `/repos/${RESEARCH_REPOSITORY}/pulls/${number}/merge`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          merge_method: "squash",
-          commit_title: `docs(evidence): ${input.methodId} evidence ${input.timestampSlug}`,
-          sha: headSha,
-        }),
-      }
-    );
-    if (merge.merged === true) {
-      return {
-        number,
-        url,
-        branch,
-        status: "filed",
-        lintConclusion: lint.conclusion,
-      };
-    }
+    return {
+      number,
+      url,
+      branch,
+      status: "filed",
+      lintConclusion: lint.conclusion,
+    };
   }
 
   return {

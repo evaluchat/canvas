@@ -1,0 +1,43 @@
+{
+  "contract": "evaluchat-research-repository-layout",
+  "supportedReaderVersion": "1.0",
+  "canonicalContent": {
+    "repository": "evaluchat/research",
+    "branch": "main",
+    "methodRoot": "methods/synthetic-method",
+    "theoryQuestion": "theory/synthetic-question.en.md",
+    "note": "Research markdown (methods, theory, findings, ledgers) lives only in the research catalog."
+  },
+  "requiredManagedPaths": [
+    ".evaluchat/workspace.yml",
+    ".gitignore",
+    "CITATION.cff",
+    "index.md",
+    "findings/synthetic-finding.en.md",
+    "methods/synthetic-method/evidence-template.en.md",
+    "methods/synthetic-method/evidence/ledgers/synthetic-snapshot.en.md",
+    "methods/synthetic-method/evidence/ledgers/synthetic-snapshot.seal.yml",
+    "methods/synthetic-method/evidence/synthetic-evidence.en.md",
+    "methods/synthetic-method/synthetic-method.en.md",
+    "theory/synthetic-question.en.md"
+  ],
+  "compatibility": {
+    "supportedVersionAccess": "read-write",
+    "unsupportedMajorAccess": "read-only",
+    "laterMinorAccess": "read-only",
+    "rule": "Readers open unsupported major versions and later unsupported minor versions read-only."
+  },
+  "fixtures": {
+    "v1.0": {
+      "root": "v1.0",
+      "layoutVersion": "1.0",
+      "expectedAccess": "read-write"
+    },
+    "v1.1": {
+      "root": "v1.1",
+      "layoutVersion": "1.1",
+      "expectedAccess": "read-only",
+      "description": "Synthetic future-minor layout for a reader supporting only v1.0."
+    }
+  }
+}

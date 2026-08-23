@@ -1,0 +1,7 @@
+cff-version: 1.2.0
+message: Cite this synthetic fixture only in contract tests.
+title: Synthetic research workspace fixture
+type: dataset
+version: 1.0.0
+authors:
+  - name: Synthetic Fixture Maintainers

@@ -5,7 +5,14 @@ import type {
   LedgerScopeFilter,
   LedgerSnapshotData,
 } from "@opencanvas/shared";
+import {
+  RepositoryStatusSchema,
+  ResearchRepositoryWorkspaceItemSchema,
+  type RepositoryStatus,
+  type ResearchRepositoryWorkspaceItem,
+} from "@opencanvas/shared/research-repository";
 import { LANGGRAPH_API_URL } from "@/constants";
+import { githubErrorStatus } from "./research-repository/github-error-status";
 import {
   FormValidationError,
   resolveFormMarkdown,
@@ -29,8 +36,11 @@ import {
   MethodSource,
   MethodWorkspaceItem,
   PendingMethodInvite,
+  UnusableResearchRepositoryWorkspaceItem,
+  UsableWorkspaceItem,
   WorkspaceItem,
   WorkspaceManifest,
+  isUsableResearchRepository,
 } from "./types";
 import {
   EvidenceLedgerResolutionError,
@@ -68,11 +78,19 @@ import {
   inviteWorkspaceParticipant,
   sleep,
 } from "@/lib/teaching/invitation-helpers";
+import { readGithubResearchCredentials } from "./research-repository/credentials";
+import {
+  createGithubRepositoryBranch,
+  getGithubInstallationRepository,
+  getGithubRepositoryBranchHead,
+} from "./research-repository/github-app";
 
 const MANIFEST_KEY = "manifest";
 const LOCK_KEY = "lock";
 /** Store SDK TTL is in minutes (see @langchain/langgraph-sdk StoreClient.putItem). */
 const WORKSPACE_LOCK_TTL_MINUTES = 1;
+export const RESEARCH_REPOSITORY_BRANCH = "evaluchat/workspace" as const;
+export const RESEARCH_REPOSITORY_LAYOUT_VERSION = "1.0" as const;
 
 /** Test seam: mutate `.value` for lease TTL / renewal-interval math. */
 export const workspaceLockTtlMs = { value: 60_000 };
@@ -165,6 +183,23 @@ export class LedgerConfigValidationError extends Error {
   }
 }
 
+export type ResearchRepositoryBindingErrorCode =
+  | "credentials_missing"
+  | "installation_unavailable"
+  | "repository_unavailable"
+  | "repository_public"
+  | "repository_already_bound";
+
+export class ResearchRepositoryBindingError extends Error {
+  constructor(
+    public readonly code: ResearchRepositoryBindingErrorCode,
+    message: string
+  ) {
+    super(message);
+    this.name = "ResearchRepositoryBindingError";
+  }
+}
+
 export function parseCatalogTemplateRef(ref: string): {
   id: string;
   version?: string;
@@ -185,11 +220,42 @@ function namespace(userId: string): string[] {
   return ["workspace_items", userId];
 }
 
+function retainUnusableResearchRepository(
+  value: unknown
+): UnusableResearchRepositoryWorkspaceItem | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const id = typeof raw.id === "string" ? raw.id : undefined;
+  if (!id) return undefined;
+  console.error("[workspace] retained unusable research_repository item", id);
+  return {
+    ...raw,
+    id,
+    kind: "research_repository",
+    unusable: true,
+    updatedAt:
+      typeof raw.updatedAt === "string"
+        ? raw.updatedAt
+        : "1970-01-01T00:00:00.000Z",
+    createdAt:
+      typeof raw.createdAt === "string"
+        ? raw.createdAt
+        : typeof raw.updatedAt === "string"
+          ? raw.updatedAt
+          : "1970-01-01T00:00:00.000Z",
+  } as UnusableResearchRepositoryWorkspaceItem;
+}
+
 function normaliseWorkspaceItem(value: unknown): WorkspaceItem | undefined {
   if (!value || typeof value !== "object") return undefined;
   const item = value as WorkspaceItem & {
     templateSnapshot?: Record<string, unknown>;
   };
+  if (item.kind === "research_repository") {
+    const parsed = ResearchRepositoryWorkspaceItemSchema.safeParse(value);
+    if (parsed.success) return parsed.data;
+    return retainUnusableResearchRepository(value);
+  }
   if (
     item.kind === "markdown_template" &&
     item.templateSnapshot &&
@@ -414,18 +480,37 @@ function createItem(userId: string, templateId: string): WorkspaceItem {
   };
 }
 
+function isSelectableDefaultItem(
+  item: WorkspaceItem | undefined
+): item is UsableWorkspaceItem {
+  return item !== undefined && !("unusable" in item && item.unusable === true);
+}
+
 export async function ensureDefaultWorkspaceItem(
   userId: string
 ): Promise<WorkspaceItem | undefined> {
   return withUserLock(userId, async () => {
     const manifest = await readManifest(userId);
-    const existing = manifest.defaultItemId
+    const pointed = manifest.defaultItemId
       ? manifest.items[manifest.defaultItemId]
-      : Object.values(manifest.items).sort((a, b) =>
-          a.createdAt.localeCompare(b.createdAt)
-        )[0];
+      : undefined;
+    if (pointed && !isSelectableDefaultItem(pointed)) {
+      console.error(
+        "[workspace] skipping unusable default workspace item",
+        pointed.id
+      );
+    }
+    const existing = isSelectableDefaultItem(pointed)
+      ? pointed
+      : Object.values(manifest.items)
+          .filter(isSelectableDefaultItem)
+          .sort((a, b) =>
+            (a.createdAt ?? a.updatedAt).localeCompare(
+              b.createdAt ?? b.updatedAt
+            )
+          )[0];
     if (existing) {
-      if (!manifest.defaultItemId || !manifest.initialized) {
+      if (manifest.defaultItemId !== existing.id || !manifest.initialized) {
         manifest.defaultItemId = existing.id;
         manifest.initialized = true;
         await writeManifest(userId, manifest);
@@ -502,6 +587,265 @@ export async function createWorkspaceItem(
     manifest.items[item.id] = item;
     await writeManifest(userId, manifest);
     return item;
+  });
+}
+
+export async function createResearchRepositoryItem(
+  userId: string,
+  input: { repositoryId: number; installationId: number }
+): Promise<ResearchRepositoryWorkspaceItem> {
+  const credentials = await readGithubResearchCredentials(userId);
+  if (!credentials) {
+    throw new ResearchRepositoryBindingError(
+      "credentials_missing",
+      "Connect GitHub before binding a research repository"
+    );
+  }
+  if (credentials.installationId !== input.installationId) {
+    throw new ResearchRepositoryBindingError(
+      "installation_unavailable",
+      "The GitHub installation is not available to this user"
+    );
+  }
+  if (!credentials.repositoryIds.includes(input.repositoryId)) {
+    throw new ResearchRepositoryBindingError(
+      "repository_unavailable",
+      "The repository is not available to this GitHub installation"
+    );
+  }
+
+  const repository = await getGithubInstallationRepository(
+    input.installationId,
+    input.repositoryId
+  );
+  if (!repository.private) {
+    throw new ResearchRepositoryBindingError(
+      "repository_public",
+      "Research repositories must be private"
+    );
+  }
+  return withUserLock(userId, async () => {
+    const manifest = await readManifest(userId);
+    const duplicate = Object.values(manifest.items).some(
+      (item) =>
+        item.kind === "research_repository" &&
+        item.binding?.repositoryId === input.repositoryId
+    );
+    if (duplicate) {
+      throw new ResearchRepositoryBindingError(
+        "repository_already_bound",
+        "This repository is already bound to a workspace item"
+      );
+    }
+
+    let headCommitSha: string;
+    try {
+      headCommitSha = await getGithubRepositoryBranchHead(
+        input.installationId,
+        repository,
+        RESEARCH_REPOSITORY_BRANCH
+      );
+    } catch (error) {
+      if (githubErrorStatus(error) !== 404) {
+        throw error;
+      }
+      const defaultBranchHead = await getGithubRepositoryBranchHead(
+        input.installationId,
+        repository,
+        repository.defaultBranch
+      );
+      let recoveredHeadCommitSha: string | undefined;
+      try {
+        await createGithubRepositoryBranch(
+          input.installationId,
+          repository,
+          RESEARCH_REPOSITORY_BRANCH,
+          defaultBranchHead
+        );
+      } catch (creationError) {
+        const status = githubErrorStatus(creationError);
+        if (status !== 409 && status !== 422) {
+          throw creationError;
+        }
+        try {
+          recoveredHeadCommitSha = await getGithubRepositoryBranchHead(
+            input.installationId,
+            repository,
+            RESEARCH_REPOSITORY_BRANCH
+          );
+        } catch {
+          throw creationError;
+        }
+      }
+      headCommitSha =
+        recoveredHeadCommitSha ??
+        (await getGithubRepositoryBranchHead(
+          input.installationId,
+          repository,
+          RESEARCH_REPOSITORY_BRANCH
+        ));
+    }
+
+    const now = new Date().toISOString();
+    const item = ResearchRepositoryWorkspaceItemSchema.parse({
+      id: `wi_${randomUUID()}`,
+      ownerId: userId,
+      kind: "research_repository",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      binding: {
+        provider: "github",
+        repositoryId: input.repositoryId,
+        installationId: input.installationId,
+        branch: RESEARCH_REPOSITORY_BRANCH,
+        layoutVersion: RESEARCH_REPOSITORY_LAYOUT_VERSION,
+        headCommitSha,
+        boundAt: now,
+      },
+    });
+    manifest.initialized = true;
+    manifest.items[item.id] = item;
+    await writeManifest(userId, manifest);
+    return item;
+  });
+}
+
+function githubFailureStatus(
+  item: ResearchRepositoryWorkspaceItem,
+  error: unknown,
+  missingReason: "repository_deleted" | "branch_deleted"
+): RepositoryStatus {
+  const status = githubErrorStatus(error);
+  const message = error instanceof Error ? error.message : "";
+  const transient =
+    (typeof status === "number" && status >= 500) || status === undefined;
+  const failure =
+    status === 404
+      ? { state: "blocked" as const, reason: missingReason }
+      : status === 401
+        ? {
+            state: "read_only" as const,
+            reason: "authorization_required" as const,
+          }
+        : /suspend/i.test(message)
+          ? {
+              state: "blocked" as const,
+              reason: "installation_suspended" as const,
+            }
+          : transient
+            ? {
+                state: "blocked" as const,
+                reason: "github_unavailable" as const,
+              }
+            : {
+                state: "blocked" as const,
+                reason: "permission_lost" as const,
+              };
+  return RepositoryStatusSchema.parse({
+    workspaceId: item.id,
+    repositoryId: item.binding.repositoryId,
+    ...failure,
+    checkedAt: new Date().toISOString(),
+  });
+}
+
+export async function getResearchRepositoryStatus(
+  userId: string,
+  item: ResearchRepositoryWorkspaceItem
+): Promise<RepositoryStatus> {
+  let credentials;
+  try {
+    credentials = await readGithubResearchCredentials(userId);
+  } catch {
+    return RepositoryStatusSchema.parse({
+      workspaceId: item.id,
+      repositoryId: item.binding.repositoryId,
+      state: "blocked",
+      reason: "credential_corrupt",
+      checkedAt: new Date().toISOString(),
+    });
+  }
+  if (
+    !credentials ||
+    credentials.installationId !== item.binding.installationId
+  ) {
+    return RepositoryStatusSchema.parse({
+      workspaceId: item.id,
+      repositoryId: item.binding.repositoryId,
+      state: "disconnected",
+      reason: "disconnected",
+      checkedAt: new Date().toISOString(),
+    });
+  }
+  if (!credentials.repositoryIds.includes(item.binding.repositoryId)) {
+    return RepositoryStatusSchema.parse({
+      workspaceId: item.id,
+      repositoryId: item.binding.repositoryId,
+      state: "blocked",
+      reason: "permission_lost",
+      checkedAt: new Date().toISOString(),
+    });
+  }
+
+  let repository;
+  try {
+    repository = await getGithubInstallationRepository(
+      item.binding.installationId,
+      item.binding.repositoryId
+    );
+  } catch (error) {
+    return githubFailureStatus(item, error, "repository_deleted");
+  }
+  if (!repository.private) {
+    return RepositoryStatusSchema.parse({
+      workspaceId: item.id,
+      repositoryId: item.binding.repositoryId,
+      state: "read_only",
+      reason: "repository_public",
+      readonlyReason: "repository_public",
+      checkedAt: new Date().toISOString(),
+    });
+  }
+
+  let headCommitSha;
+  try {
+    headCommitSha = await getGithubRepositoryBranchHead(
+      item.binding.installationId,
+      repository,
+      item.binding.branch
+    );
+  } catch (error) {
+    return githubFailureStatus(item, error, "branch_deleted");
+  }
+
+  const [major, minor] = item.binding.layoutVersion
+    .split(".")
+    .map((part) => Number(part));
+  const [supportedMajor, supportedMinor] =
+    RESEARCH_REPOSITORY_LAYOUT_VERSION.split(".").map((part) => Number(part));
+  if (major !== supportedMajor || minor !== supportedMinor) {
+    return RepositoryStatusSchema.parse({
+      workspaceId: item.id,
+      repositoryId: item.binding.repositoryId,
+      state: "read_only",
+      reason:
+        major === supportedMajor
+          ? "unsupported_layout_minor"
+          : "unsupported_layout_major",
+      layoutVersion: item.binding.layoutVersion,
+      headCommitSha,
+      checkedAt: new Date().toISOString(),
+    });
+  }
+
+  return RepositoryStatusSchema.parse({
+    workspaceId: item.id,
+    repositoryId: item.binding.repositoryId,
+    state: "ready",
+    layoutVersion: item.binding.layoutVersion,
+    headCommitSha,
+    checkedAt: new Date().toISOString(),
   });
 }
 
@@ -1642,10 +1986,16 @@ export async function deleteWorkspaceItem(
 export async function getWorkspaceItem(
   userId: string,
   itemId: string
-): Promise<WorkspaceItem | undefined> {
+): Promise<UsableWorkspaceItem | undefined> {
   const manifest = await readManifest(userId);
   const item = manifest.items[itemId];
   if (!item || item.ownerId !== userId || item.status !== "active") {
+    return undefined;
+  }
+  if (
+    item.kind === "research_repository" &&
+    !isUsableResearchRepository(item)
+  ) {
     return undefined;
   }
   if (item.kind === "method" && item.run) {
@@ -1653,7 +2003,34 @@ export async function getWorkspaceItem(
       await reconcileMethodRunSubmissions(userId, item)
     );
   }
-  return enrichWorkspaceItem(item);
+  return enrichWorkspaceItem(item as UsableWorkspaceItem);
+}
+
+export async function updateResearchRepositoryBindingHead(
+  userId: string,
+  itemId: string,
+  headCommitSha: string
+): Promise<ResearchRepositoryWorkspaceItem> {
+  return withUserLock(userId, async () => {
+    const manifest = await readManifest(userId);
+    const item = manifest.items[itemId];
+    if (
+      !item ||
+      !isUsableResearchRepository(item) ||
+      item.ownerId !== userId ||
+      item.status !== "active"
+    ) {
+      throw new WorkspaceItemNotFoundError();
+    }
+    const updated = ResearchRepositoryWorkspaceItemSchema.parse({
+      ...item,
+      updatedAt: new Date().toISOString(),
+      binding: { ...item.binding, headCommitSha },
+    });
+    manifest.items[itemId] = updated;
+    await writeManifest(userId, manifest);
+    return updated;
+  });
 }
 
 /** Read a sealed snapshot owned by the active workspace user. */

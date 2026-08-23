@@ -18,10 +18,16 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@opencanvas/shared/github-research/crypto": [
+        "../../packages/shared/src/github-research/crypto.ts"
+      ],
+      "@opencanvas/shared/research-repository": [
+        "../../packages/shared/src/research-repository.ts"
+      ]
     },
     "target": "ES2017"
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "vitest.unit.config.ts", "ls.vitest.config.ts"]
 }

@@ -125,6 +125,18 @@ jobs:
       - name: Build all packages
         run: yarn build
 
+  docs-allowlist:
+    name: Check docs/ allowlist
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Verify docs/ contains only allowed paths
+        run: bash scripts/check-docs-allowlist.sh
+
   template-catalog:
     name: Verify public template catalog snapshot
     permissions:

@@ -29,3 +29,5 @@ export type {
 } from "./evidence.js";
 
 export * from "./ledger.js";
+
+export * from "./research-repository.js";

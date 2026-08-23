@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildWorkspaceItemCreateBody } from "./create-workspace-item-dialog";
+import {
+  buildResearchRepositoryCreateBody,
+  buildWorkspaceItemCreateBody,
+  workspaceItemCreationKinds,
+} from "./create-workspace-item-dialog";
 
 describe("CreateWorkspaceItemDialog request bodies", () => {
   it("creates a plain method item request body", () => {
@@ -12,5 +16,20 @@ describe("CreateWorkspaceItemDialog request bodies", () => {
     expect(
       buildWorkspaceItemCreateBody({ id: "ledger-demo-method", kind: "ledger" })
     ).toEqual({ kind: "ledger", methodId: "ledger-demo-method" });
+  });
+
+  it("creates a research repository request body", () => {
+    expect(buildResearchRepositoryCreateBody({ id: 101 }, 99)).toEqual({
+      kind: "research_repository",
+      installationId: 99,
+      repositoryId: 101,
+    });
+  });
+
+  it("omits the private repository entry while the server flag is off", () => {
+    expect(workspaceItemCreationKinds(false)).not.toContain(
+      "research_repository"
+    );
+    expect(workspaceItemCreationKinds(true)).toContain("research_repository");
   });
 });

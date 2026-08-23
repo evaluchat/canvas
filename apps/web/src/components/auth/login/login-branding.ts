@@ -13,7 +13,7 @@ export const TERMS_PATH = "/terms";
 export const LOGIN_PRICING_SUMMARY =
   "PUBLIC BETA - Open education research workspace; no billing in this release.";
 
-/** Login panel / docs `.site-header` brand blue (`docs/assets/style.css --brand`). */
+/** Login panel / knowledge site `.site-header` brand blue. */
 export const BRAND_PANEL_COLOR = "#2c3e56";
 
 /**

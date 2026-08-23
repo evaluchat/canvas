@@ -86,6 +86,15 @@ files only. Don't reformat unrelated files — it pollutes the PR.
 - [ ] New/changed behaviour is covered by a test where practical
 - [ ] Description explains what and why, plus how it was tested
 
+## Documentation routing
+
+This repo holds **contributor dev docs only** (`docs/contributing/`, `docs/electron-desktop/`).
+
+- **Product behavior, feature design, and platform security** → [evaluchat/knowledge](https://github.com/evaluchat/knowledge) (knowledge.evaluchat.org)
+- **Research methodology governance** (review protocol, contribution ladder, evidence roles) → [evaluchat/research](https://github.com/evaluchat/research) (research.evaluchat.org)
+
+Do not add ADRs, feature specs, marketing HTML, or orchestration plans under `docs/` in this repository.
+
 ## License
 
 By contributing you agree that your contributions are licensed under the MIT License

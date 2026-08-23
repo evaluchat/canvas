@@ -6,6 +6,7 @@ import type {
   LedgerPublicationRef,
   LedgerSnapshotData,
 } from "@opencanvas/shared";
+import type { ResearchRepositoryWorkspaceItem } from "@opencanvas/shared/research-repository";
 
 export const DEFAULT_WORKSPACE_TEMPLATE_ID = "evaluchat-getting-started";
 export const FINDING_STARTER_TEMPLATE_ID = "finding-starter";
@@ -227,13 +228,43 @@ export type LedgerSnapshotWorkspaceItem = Omit<WorkspaceItemBase, "source"> & {
 
 export type FormBackedWorkspaceItem = FormWorkspaceItem | MethodWorkspaceItem;
 
+export type UnusableResearchRepositoryWorkspaceItem = {
+  id: string;
+  kind: "research_repository";
+  unusable: true;
+  ownerId?: string;
+  status?: string;
+  updatedAt: string;
+  createdAt: string;
+  binding?: {
+    repositoryId?: number;
+    [key: string]: unknown;
+  };
+};
+
 export type WorkspaceItem =
   | MarkdownWorkspaceItem
   | FormWorkspaceItem
   | MethodWorkspaceItem
   | MethodParticipantWorkspaceItem
   | LedgerWorkspaceItem
-  | LedgerSnapshotWorkspaceItem;
+  | LedgerSnapshotWorkspaceItem
+  | ResearchRepositoryWorkspaceItem
+  | UnusableResearchRepositoryWorkspaceItem;
+
+export function isUsableResearchRepository(
+  item: WorkspaceItem
+): item is ResearchRepositoryWorkspaceItem {
+  return (
+    item.kind === "research_repository" &&
+    !("unusable" in item && item.unusable === true)
+  );
+}
+
+export type UsableWorkspaceItem = Exclude<
+  WorkspaceItem,
+  UnusableResearchRepositoryWorkspaceItem
+>;
 
 export type WorkspaceManifest = {
   initialized: boolean;

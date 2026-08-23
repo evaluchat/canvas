@@ -166,6 +166,42 @@ describe("research repository contracts", () => {
     ).toBe(false);
   });
 
+  it("allows readonlyReason only on the read-only public-repository state", () => {
+    expect(
+      RepositoryStatusSchema.safeParse({
+        workspaceId: "workspace-synthetic",
+        repositoryId: 12001,
+        state: "read_only",
+        reason: "repository_public",
+        readonlyReason: "repository_public",
+        checkedAt: timestamp,
+      }).success
+    ).toBe(true);
+
+    expect(
+      RepositoryStatusSchema.safeParse({
+        workspaceId: "workspace-synthetic",
+        repositoryId: 12001,
+        state: "blocked",
+        reason: "repository_deleted",
+        readonlyReason: "repository_public",
+        checkedAt: timestamp,
+      }).success
+    ).toBe(false);
+
+    expect(
+      RepositoryStatusSchema.safeParse({
+        workspaceId: "workspace-synthetic",
+        repositoryId: 12001,
+        state: "ready",
+        layoutVersion: "1.0",
+        headCommitSha: commitSha,
+        readonlyReason: "repository_public",
+        checkedAt: timestamp,
+      }).success
+    ).toBe(false);
+  });
+
   it("accepts pointer-only operation state and rejects retained commit messages", () => {
     const operation = {
       operationId: "operation-synthetic",

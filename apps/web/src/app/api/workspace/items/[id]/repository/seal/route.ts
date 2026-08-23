@@ -439,10 +439,16 @@ export async function POST(request: Request, context: RouteContext) {
       );
       return json({ error: "Research repository is disconnected" }, 409);
     }
-    const repository = await loadInstallationRepository(
-      item.binding.installationId,
-      item.binding.repositoryId
-    );
+    const { repository } = await assertRepositoryWriteAccess({
+      installationId: item.binding.installationId,
+      repositoryId: item.binding.repositoryId,
+      branch: item.binding.branch,
+      expectedHeadSha: item.binding.headCommitSha,
+      files: [
+        sealLedgerPath(proposedSnapshotId),
+        sealManifestPath(proposedSnapshotId),
+      ],
+    });
     access = { binding: item.binding, credentials, repository };
   } catch (error) {
     try {
@@ -454,6 +460,8 @@ export async function POST(request: Request, context: RouteContext) {
     } catch {
       // Preserve the authorization failure as the response cause.
     }
+    const response = sealError(error);
+    if (response) return response;
     console.error(
       "[github-research] failed to authorize repository seal",
       repositoryRouteErrorDetails(item.id, error)

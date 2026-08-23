@@ -424,6 +424,34 @@ describe("POST repository seal", () => {
     );
   });
 
+  it("returns a structured 409 when the repository is deleted after the access check", async () => {
+    harness.repository
+      .mockResolvedValueOnce({
+        owner: "octocat",
+        name: "private",
+        private: true,
+      })
+      .mockRejectedValue(
+        Object.assign(new Error("Not Found"), { status: 404 })
+      );
+
+    const response = await POST(
+      request({ action: "seal", preview, declarations: confirmedDeclarations }),
+      context
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "REPOSITORY_UNAVAILABLE",
+    });
+    expect(harness.fail).toHaveBeenCalledWith(
+      "user-1",
+      runningOperation,
+      "CREDENTIAL_READ_FAILED"
+    );
+    expect(harness.commit).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when a superseded snapshot is absent", async () => {
     harness.claim.mockResolvedValue({
       ...pendingOperation,

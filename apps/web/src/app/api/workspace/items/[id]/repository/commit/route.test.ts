@@ -440,4 +440,23 @@ describe("POST repository artifact commit", () => {
     expect(harness.claimOperation).not.toHaveBeenCalled();
     expect(harness.commitArtifacts).not.toHaveBeenCalled();
   });
+
+  it("returns a structured 409 when the repository is deleted after the access check", async () => {
+    harness.getRepository
+      .mockResolvedValueOnce({
+        owner: "octocat",
+        name: "private",
+        private: true,
+      })
+      .mockRejectedValue(
+        Object.assign(new Error("Not Found"), { status: 404 })
+      );
+
+    const response = await POST(request(), context);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "REPOSITORY_UNAVAILABLE",
+    });
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
+  });
 });

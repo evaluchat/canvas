@@ -5,10 +5,11 @@ import {
   getWorkspaceItem,
   updateResearchRepositoryBindingHead,
 } from "@/lib/workspace/store";
-import { getGithubInstallationRepository } from "@/lib/workspace/research-repository/github-app";
 import {
   RepositoryAccessError,
+  assertRepositoryPrivate,
   assertRepositoryWriteAccess,
+  loadInstallationRepository,
   repositoryAccessBody,
   repositoryAccessHttpStatus,
 } from "@/lib/workspace/research-repository/access";
@@ -156,10 +157,11 @@ export async function POST(request: Request, context: RouteContext) {
         ) {
           throw new Error("Research repository is disconnected");
         }
-        const repository = await getGithubInstallationRepository(
+        const repository = await loadInstallationRepository(
           item.binding.installationId,
           item.binding.repositoryId
         );
+        assertRepositoryPrivate(repository);
         return getRepositoryBranchHead(
           item.binding.installationId,
           repository,
@@ -170,6 +172,12 @@ export async function POST(request: Request, context: RouteContext) {
   } catch (error) {
     if (error instanceof RepositoryOperationInProgressError) {
       return json({ error: "repository_operation_in_progress" }, 409);
+    }
+    if (error instanceof RepositoryAccessError) {
+      return json(
+        repositoryAccessBody(error),
+        repositoryAccessHttpStatus(error.code)
+      );
     }
     console.error(
       "[github-research] failed to claim repository operation",
@@ -283,10 +291,11 @@ export async function POST(request: Request, context: RouteContext) {
 
   let commitSha: string;
   try {
-    const repository = await getGithubInstallationRepository(
+    const repository = await loadInstallationRepository(
       item.binding.installationId,
       item.binding.repositoryId
     );
+    assertRepositoryPrivate(repository);
     const metadata = credentials.displayMetadata;
     const githubLogin =
       typeof metadata.login === "string" ? metadata.login : undefined;
@@ -324,6 +333,12 @@ export async function POST(request: Request, context: RouteContext) {
       console.error(
         "[github-research] failed to record commit failure",
         repositoryRouteErrorDetails(item.id, storeError)
+      );
+    }
+    if (error instanceof RepositoryAccessError) {
+      return json(
+        repositoryAccessBody(error),
+        repositoryAccessHttpStatus(error.code)
       );
     }
     if (stale) {

@@ -217,6 +217,13 @@ export const RepositoryStatusSchema = z
         });
       }
     }
+    if (status.readonlyReason !== undefined && status.state !== "read_only") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["readonlyReason"],
+        message: "readonlyReason is only valid for a read-only repository",
+      });
+    }
   });
 
 export type RepositoryStatus = z.infer<typeof RepositoryStatusSchema>;

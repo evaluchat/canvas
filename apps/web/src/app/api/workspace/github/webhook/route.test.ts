@@ -74,19 +74,17 @@ describe("POST /api/workspace/github/webhook", () => {
   });
 
   it("rejects a missing HMAC signature before handling the payload", async () => {
-    const response = await POST(
-      request({ installation: { id: 99 } }, { "x-hub-signature-256": "" })
-    );
+    const req = request({ installation: { id: 99 } });
+    req.headers.delete("x-hub-signature-256");
+    const response = await POST(req);
     expect(response.status).toBe(401);
     expect(harness.verify).not.toHaveBeenCalled();
     expect(harness.findOwners).not.toHaveBeenCalled();
   });
 
   it("rejects a missing HMAC signature without consuming the request body", async () => {
-    const req = request(
-      { installation: { id: 99 } },
-      { "x-hub-signature-256": "" }
-    );
+    const req = request({ installation: { id: 99 } });
+    req.headers.delete("x-hub-signature-256");
     req.text = async () => {
       throw new Error("body must not be consumed");
     };

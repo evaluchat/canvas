@@ -239,10 +239,16 @@ export function resolveRepositoryArtifactPath(
     path = `methods/${assertComponent(
       parts[0]
     )}/evidence/ledgers/${assertComponent(parts[1])}.en.md`;
+  } else if (kind === "ledger" && parts.length === 1) {
+    // Sealed snapshot render (ledger/seals/<snapshot-id>.en.md).
+    path = `ledger/seals/${assertComponent(parts[0])}.en.md`;
   } else if (kind === "ledger-seal" && parts.length === 2) {
     path = `methods/${assertComponent(
       parts[0]
     )}/evidence/ledgers/${assertComponent(parts[1])}.seal.yml`;
+  } else if (kind === "ledger-seal" && parts.length === 1) {
+    // Sealed snapshot manifest (ledger/seals/<snapshot-id>.seal.yml).
+    path = `ledger/seals/${assertComponent(parts[0])}.seal.yml`;
   } else if (kind === "finding" && parts.length === 1) {
     path = `findings/${assertComponent(parts[0])}.en.md`;
   }

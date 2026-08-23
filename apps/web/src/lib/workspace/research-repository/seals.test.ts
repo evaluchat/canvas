@@ -316,6 +316,73 @@ describe("repository ledger seals", () => {
     expect(harness.commitArtifacts).not.toHaveBeenCalled();
   });
 
+  it("excludes sealed renders from later seal inputs", async () => {
+    const sealedRenderPath = sealLedgerPath(snapshotOne);
+    harness.listArtifacts.mockResolvedValue({
+      artifacts: [
+        ...artifacts,
+        {
+          artifactId: `ledger.${snapshotOne}`,
+          kind: "ledger",
+          path: sealedRenderPath,
+          commitSha: headCommitSha,
+          blobSha: "c1".repeat(20),
+          contentSha256: "9".repeat(64),
+        },
+        {
+          artifactId: `ledger-seal.${snapshotOne}`,
+          kind: "ledger_seal",
+          path: sealManifestPath(snapshotOne),
+          commitSha: headCommitSha,
+          blobSha: "c2".repeat(20),
+          contentSha256: "8".repeat(64),
+        },
+      ],
+      commitSha: headCommitSha,
+    });
+    const clean = await previewSealSnapshot(access, {
+      snapshotId: snapshotTwo,
+      reviewedAt,
+    });
+
+    expect(clean.inputArtifactIds).not.toContain(`ledger.${snapshotOne}`);
+    expect(clean.inputs.map((input) => input.path)).not.toContain(
+      sealedRenderPath
+    );
+    // A prior seal changes nothing: same inputs and configuration hash as the
+    // fresh-repository preview in the determinism test below.
+    expect(clean.inputArtifactIds).toEqual(
+      [...artifacts]
+        .sort((left, right) => left.path.localeCompare(right.path))
+        .map((artifact) => artifact.artifactId)
+    );
+  });
+
+  it("rejects upper-case snapshot ids", async () => {
+    await expect(
+      previewSealSnapshot(access, {
+        snapshotId: "ABCD1111-1111-4111-8111-111111111111",
+        reviewedAt,
+      })
+    ).rejects.toMatchObject({
+      code: "INVALID_PREVIEW",
+    });
+  });
+
+  it("carries the deterministic snapshot data for the declaration gate", async () => {
+    const preview = await previewSealSnapshot(access, {
+      snapshotId: snapshotOne,
+      reviewedAt,
+    });
+
+    expect(preview.snapshotData).toBeDefined();
+    expect(preview.snapshotData.ledgerId).toBe(snapshotOne);
+    expect(preview.snapshotData.methodId).toBe("synthetic-method");
+    expect(preview.snapshotData.manifest.contributions).toHaveLength(
+      preview.inputs.length
+    );
+  });
+
   it("resolves the latest parsed seal by review time", async () => {
     const latestPath = sealManifestPath(snapshotTwo);
     files.set(sealManifestPath(snapshotOne), {

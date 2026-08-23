@@ -22,11 +22,12 @@ import {
   startRepositoryOperation,
 } from "@/lib/workspace/research-repository/operations";
 import { repositoryRouteErrorDetails } from "@/lib/workspace/research-repository/route-errors";
+import { validateLedgerPublicationDeclarations } from "@/lib/workspace/ledger-publish";
+import { FormValidationError } from "@/lib/workspace/form-validation";
 import {
   commitSealSnapshot,
   previewSealSnapshot,
   SealSnapshotError,
-  supersedeSeal,
   type RepositorySealAccess,
   type SealSnapshotPreview,
 } from "@/lib/workspace/research-repository/seals";
@@ -43,13 +44,56 @@ type PreviewReference = {
   renderHash?: string;
 };
 
+type SealDeclarations = {
+  publicationAuthorisation: string;
+  anonymisationStatus: string;
+  publicDataDeclaration: string;
+};
+
 type SealRequest =
   | { action: "preview" }
-  | { action: "seal"; preview: PreviewReference }
-  | { action: "supersede"; supersedes: string };
+  | {
+      action: "seal";
+      preview: PreviewReference;
+      declarations: SealDeclarations;
+    }
+  | { action: "supersede"; supersedes: string; declarations: SealDeclarations };
 
 const SNAPSHOT_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const RENDER_HASH = /^[0-9a-f]{64}$/;
+
+function declarations(value: unknown): SealDeclarations | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const candidate = value as Record<string, unknown>;
+  const publicationAuthorisation = stringField(
+    candidate,
+    "publicationAuthorisation",
+    "publication_authorisation"
+  );
+  const anonymisationStatus = stringField(
+    candidate,
+    "anonymisationStatus",
+    "anonymisation_status"
+  );
+  const publicDataDeclaration = stringField(
+    candidate,
+    "publicDataDeclaration",
+    "public_data_declaration"
+  );
+  if (
+    typeof publicationAuthorisation !== "string" ||
+    typeof anonymisationStatus !== "string" ||
+    typeof publicDataDeclaration !== "string"
+  ) {
+    return;
+  }
+  return {
+    publicationAuthorisation,
+    anonymisationStatus,
+    publicDataDeclaration,
+  };
+}
 
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, {
@@ -67,8 +111,14 @@ function stringField(
   return typeof candidate === "string" ? candidate : undefined;
 }
 
-function previewReference(value: unknown): PreviewReference | undefined {
-  if (typeof value === "string") return { snapshotId: value };
+function previewReference(
+  value: unknown,
+  requireHashes = false
+): PreviewReference | undefined {
+  if (typeof value === "string") {
+    if (requireHashes) return;
+    return { snapshotId: value };
+  }
   if (!value || typeof value !== "object" || Array.isArray(value)) return;
   const candidate = value as Record<string, unknown>;
   const snapshotId = stringField(candidate, "snapshotId", "snapshot_id");
@@ -79,6 +129,9 @@ function previewReference(value: unknown): PreviewReference | undefined {
     "sealed_from_commit"
   );
   if (sealedFromCommit && !/^[0-9a-f]{40}$/.test(sealedFromCommit)) return;
+  const renderHash = stringField(candidate, "renderHash", "render_hash");
+  if (renderHash && !RENDER_HASH.test(renderHash)) return;
+  if (requireHashes && (!sealedFromCommit || !renderHash)) return;
   return {
     snapshotId,
     sealedFromCommit,
@@ -88,7 +141,7 @@ function previewReference(value: unknown): PreviewReference | undefined {
       "configurationHash",
       "configuration_hash"
     ),
-    renderHash: stringField(candidate, "renderHash", "render_hash"),
+    renderHash,
   };
 }
 
@@ -97,8 +150,11 @@ function requestBody(value: unknown): SealRequest | undefined {
   const candidate = value as Record<string, unknown>;
   if (candidate.action === "preview") return { action: "preview" };
   if (candidate.action === "seal") {
-    const preview = previewReference(candidate.preview);
-    return preview ? { action: "seal", preview } : undefined;
+    const preview = previewReference(candidate.preview, true);
+    const confirmed = declarations(candidate.declarations);
+    return preview && confirmed
+      ? { action: "seal", preview, declarations: confirmed }
+      : undefined;
   }
   if (
     candidate.action === "supersede" &&
@@ -106,7 +162,14 @@ function requestBody(value: unknown): SealRequest | undefined {
     /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(candidate.supersedes) &&
     candidate.supersedes.length <= 128
   ) {
-    return { action: "supersede", supersedes: candidate.supersedes };
+    const confirmed = declarations(candidate.declarations);
+    return confirmed
+      ? {
+          action: "supersede",
+          supersedes: candidate.supersedes,
+          declarations: confirmed,
+        }
+      : undefined;
   }
   return;
 }
@@ -163,6 +226,29 @@ function matchesPreview(
       accepted.configurationHash === resolved.configurationHash) &&
     (!accepted.renderHash || accepted.renderHash === resolved.renderHash)
   );
+}
+
+/**
+ * The seal declaration gate: a seal commits only after the researcher
+ * confirmed the privacy and publication declarations against the exact
+ * repository state under review (same field contract as the v0.7 publication
+ * route). Never echoes field-level form errors; the client shows its own.
+ */
+function assertSealDeclarations(
+  preview: SealSnapshotPreview,
+  declared: SealDeclarations
+): void {
+  try {
+    validateLedgerPublicationDeclarations(preview.snapshotData, declared);
+  } catch (error) {
+    if (error instanceof FormValidationError) {
+      throw new SealSnapshotError(
+        "DECLARATIONS_REQUIRED",
+        "The researcher declarations are required and must be confirmed"
+      );
+    }
+    throw error;
+  }
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -274,6 +360,7 @@ export async function POST(request: Request, context: RouteContext) {
   if (operation.status === "failed") {
     const errorCode = operation.errorCode ?? "REPOSITORY_OPERATION_FAILED";
     const validationError =
+      errorCode === "DECLARATIONS_REQUIRED" ||
       errorCode === "INVALID_METHOD" ||
       errorCode === "INVALID_PREVIEW" ||
       errorCode === "MISSING_METHOD" ||
@@ -358,19 +445,22 @@ export async function POST(request: Request, context: RouteContext) {
           "The accepted preview no longer matches the repository inputs"
         );
       }
+      assertSealDeclarations(preview, body.declarations);
       ({ commitSha } = await commitSealSnapshot(
         access,
         preview,
         authorFor(access)
       ));
     } else {
-      ({ commitSha } = await supersedeSeal(
+      const preview = await previewSealSnapshot(access, {
+        snapshotId,
+        supersedes: body.supersedes,
+        expectedHeadCommitSha: operation.baseCommitSha,
+      });
+      assertSealDeclarations(preview, body.declarations);
+      ({ commitSha } = await commitSealSnapshot(
         access,
-        body.supersedes,
-        {
-          snapshotId,
-          expectedHeadCommitSha: operation.baseCommitSha,
-        },
+        preview,
         authorFor(access)
       ));
     }

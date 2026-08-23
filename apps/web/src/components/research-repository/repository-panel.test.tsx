@@ -365,7 +365,24 @@ describe("RepositoryPanel", () => {
     expect(screen.getByText(/config c{12} · render d{12}/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Supersede" })).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Seal" }));
+    // Seal stays disabled until all three declarations are confirmed.
+    const sealButton = () =>
+      screen.getByRole("button", { name: "Seal" }) as HTMLButtonElement;
+    expect(sealButton().disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/Publication Authorisation/), {
+      target: { value: "confirmed-authorised-to-publish" },
+    });
+    fireEvent.change(screen.getByLabelText(/Anonymisation Status/), {
+      target: {
+        value: "confirmed-no-student-identifiers-or-raw-student-material",
+      },
+    });
+    fireEvent.change(screen.getByLabelText(/Public Data Declaration/), {
+      target: { value: "confirmed-public-data" },
+    });
+    expect(sealButton().disabled).toBe(false);
+
+    fireEvent.click(sealButton());
     expect((await screen.findByRole("status")).textContent).toContain(
       snapshotId
     );
@@ -376,9 +393,19 @@ describe("RepositoryPanel", () => {
       .map(
         ([, init]) => JSON.parse(String(init?.body)) as Record<string, unknown>
       );
+    const confirmedDeclarations = {
+      publicationAuthorisation: "confirmed-authorised-to-publish",
+      anonymisationStatus:
+        "confirmed-no-student-identifiers-or-raw-student-material",
+      publicDataDeclaration: "confirmed-public-data",
+    };
     expect(sealRequests).toEqual([
       { action: "preview" },
-      { action: "seal", preview: sealPreview },
+      {
+        action: "seal",
+        preview: sealPreview,
+        declarations: confirmedDeclarations,
+      },
     ]);
   });
 
@@ -432,6 +459,20 @@ describe("RepositoryPanel", () => {
       })
     );
     fireEvent.click(await screen.findByRole("button", { name: "Preview" }));
+    const confirm = async () => {
+      fireEvent.change(screen.getByLabelText(/Publication Authorisation/), {
+        target: { value: "confirmed-authorised-to-publish" },
+      });
+      fireEvent.change(screen.getByLabelText(/Anonymisation Status/), {
+        target: {
+          value: "confirmed-no-student-identifiers-or-raw-student-material",
+        },
+      });
+      fireEvent.change(screen.getByLabelText(/Public Data Declaration/), {
+        target: { value: "confirmed-public-data" },
+      });
+    };
+    await confirm();
     fireEvent.click(await screen.findByRole("button", { name: "Supersede" }));
 
     expect((await screen.findByRole("status")).textContent).toContain(
@@ -444,6 +485,12 @@ describe("RepositoryPanel", () => {
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({
       action: "supersede",
       supersedes: latestSnapshotId,
+      declarations: {
+        publicationAuthorisation: "confirmed-authorised-to-publish",
+        anonymisationStatus:
+          "confirmed-no-student-identifiers-or-raw-student-material",
+        publicDataDeclaration: "confirmed-public-data",
+      },
     });
   });
 });

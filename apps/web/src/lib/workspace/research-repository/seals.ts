@@ -20,11 +20,21 @@ import {
 } from "./git-adapter";
 
 const SNAPSHOT_ID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SEAL_MANIFEST_PATH = /^ledger\/seals\/([^/]+)\.seal\.yml$/;
 const SEAL_INPUT_KINDS = new Set(["method", "evidence", "finding", "ledger"]);
 
+/**
+ * Seal outputs live under ledger/seals/ (rendered `<id>.en.md` and
+ * `<id>.seal.yml`). The renders carry kind "ledger" and must never feed back
+ * into the input set: after the first seal, its own render would otherwise
+ * become an input of the next seal and drift configurationHash/renderHash on
+ * every seal even when nothing changed.
+ */
+const SEAL_OUTPUT_PREFIX = "ledger/seals/";
+
 export type SealSnapshotErrorCode =
+  | "DECLARATIONS_REQUIRED"
   | "INVALID_METHOD"
   | "INVALID_PREVIEW"
   | "MISSING_METHOD"
@@ -56,6 +66,12 @@ export type SealSnapshotPreview = LedgerSealManifestV1 & {
   manifestYaml: string;
   inputArtifactIds: string[];
   latestSnapshotId?: string;
+  /**
+   * The deterministic v0.7 ledger snapshot this preview renders. Carried so
+   * the declaration gate can validate researcher confirmations against the
+   * exact repository state under review. Never serialized or stored.
+   */
+  snapshotData: LedgerSnapshotData;
 };
 
 type PreviewOptions = {
@@ -341,7 +357,11 @@ export async function previewSealSnapshot(
   }
 
   const artifacts = listed.artifacts
-    .filter((artifact) => SEAL_INPUT_KINDS.has(artifact.kind))
+    .filter(
+      (artifact) =>
+        SEAL_INPUT_KINDS.has(artifact.kind) &&
+        !artifact.path.startsWith(SEAL_OUTPUT_PREFIX)
+    )
     .sort((left, right) => compare(left.path, right.path));
   if (!artifacts.length) {
     throw new SealSnapshotError(
@@ -428,6 +448,7 @@ export async function previewSealSnapshot(
     manifestYaml,
     inputArtifactIds: artifacts.map((artifact) => artifact.artifactId),
     latestSnapshotId,
+    snapshotData: renderable.snapshot,
   };
 }
 

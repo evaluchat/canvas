@@ -38,6 +38,16 @@ describe("research repository layout 1.0", () => {
       "methods/synthetic-method/evidence/ledgers/snapshot-one.seal.yml",
       "ledger_seal",
     ],
+    [
+      "ledger.11111111-1111-4111-8111-111111111111",
+      "ledger/seals/11111111-1111-4111-8111-111111111111.en.md",
+      "ledger",
+    ],
+    [
+      "ledger-seal.11111111-1111-4111-8111-111111111111",
+      "ledger/seals/11111111-1111-4111-8111-111111111111.seal.yml",
+      "ledger_seal",
+    ],
     ["finding.result-one", "findings/result-one.en.md", "finding"],
     ["workspace-manifest", ".evaluchat/workspace.yml", "workspace_manifest"],
     ["readme", "README.md", "readme"],

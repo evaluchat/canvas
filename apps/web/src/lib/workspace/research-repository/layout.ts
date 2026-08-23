@@ -175,6 +175,24 @@ export function identifyRepositoryArtifactPath(
     };
   }
 
+  match = /^ledger\/seals\/([^/]+)\.en\.md$/.exec(path);
+  if (match && COMPONENT.test(match[1])) {
+    return {
+      artifactId: `ledger.${match[1]}`,
+      kind: "ledger",
+      path,
+    };
+  }
+
+  match = /^ledger\/seals\/([^/]+)\.seal\.yml$/.exec(path);
+  if (match && COMPONENT.test(match[1])) {
+    return {
+      artifactId: `ledger-seal.${match[1]}`,
+      kind: "ledger_seal",
+      path,
+    };
+  }
+
   match = /^findings\/([^/]+)\.en\.md$/.exec(path);
   if (match && COMPONENT.test(match[1])) {
     return {

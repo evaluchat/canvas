@@ -25,6 +25,26 @@ type RepositoryStatusResponse = {
   error?: string;
 };
 
+type SealPreview = {
+  snapshotId: string;
+  sealedFromCommit: string;
+  reviewedAt: string;
+  configurationHash: string;
+  renderHash: string;
+  inputs: Array<{ path: string; blobSha: string; sha256: string }>;
+  ledgerPath: string;
+  sealPath: string;
+  latestSnapshotId?: string;
+};
+
+type SealResponse = {
+  preview?: SealPreview;
+  operationId?: string;
+  commitSha?: string;
+  snapshotId?: string;
+  error?: string;
+};
+
 function shortCommit(sha: string | undefined): string {
   return sha ? sha.slice(0, 7) : "unknown";
 }
@@ -32,6 +52,10 @@ function shortCommit(sha: string | undefined): string {
 function statusLabel(status: RepositoryStatus | undefined): string {
   if (!status) return "unavailable";
   return status.state.replace("_", " ");
+}
+
+function shortHash(value: string): string {
+  return value.slice(0, 12);
 }
 
 function BoundRepositoryPanel({
@@ -54,6 +78,16 @@ function BoundRepositoryPanel({
   const [reconcileError, setReconcileError] = useState<string>();
   const [reconcileConfirmation, setReconcileConfirmation] = useState<string>();
   const [reconciling, setReconciling] = useState(false);
+  const [sealPreview, setSealPreview] = useState<SealPreview>();
+  const [latestSnapshotId, setLatestSnapshotId] = useState<string>();
+  const [sealResult, setSealResult] = useState<{
+    commitSha: string;
+    snapshotId: string;
+  }>();
+  const [sealError, setSealError] = useState<string>();
+  const [sealAction, setSealAction] = useState<
+    "preview" | "seal" | "supersede"
+  >();
   const previousUrlArtifactId = useRef(urlArtifactId);
 
   useEffect(() => {
@@ -134,6 +168,74 @@ function BoundRepositoryPanel({
       );
     } finally {
       setReconciling(false);
+    }
+  }
+
+  function recordSealResult(commitSha: string, snapshotId: string) {
+    setSealResult({ commitSha, snapshotId });
+    setLatestSnapshotId(snapshotId);
+    setSealPreview(undefined);
+    setStatus((current) =>
+      current
+        ? {
+            ...current,
+            state: "ready",
+            reason: undefined,
+            headCommitSha: commitSha,
+            checkedAt: new Date().toISOString(),
+          }
+        : current
+    );
+    setBrowserRefreshKey((current) => current + 1);
+    setEditorRefreshKey((current) => current + 1);
+  }
+
+  async function requestSeal(action: "preview" | "seal" | "supersede") {
+    setSealAction(action);
+    setSealError(undefined);
+    setSealResult(undefined);
+    try {
+      const requestBody =
+        action === "preview"
+          ? { action }
+          : action === "seal"
+            ? { action, preview: sealPreview }
+            : { action, supersedes: latestSnapshotId };
+      const response = await fetch(
+        `/api/workspace/items/${encodeURIComponent(item.id)}/repository/seal`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        }
+      );
+      const body = (await response.json()) as SealResponse;
+      if (response.status === 404 && body.error === "Not found") {
+        setAvailable(false);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(body.error || "Could not seal repository snapshot");
+      }
+      if (action === "preview" && body.preview) {
+        setSealPreview(body.preview);
+        setLatestSnapshotId(body.preview.latestSnapshotId);
+        return;
+      }
+      if (body.commitSha && body.snapshotId) {
+        recordSealResult(body.commitSha, body.snapshotId);
+        return;
+      }
+      throw new Error("The repository seal response was incomplete");
+    } catch (cause) {
+      setSealError(
+        cause instanceof Error
+          ? cause.message
+          : "Could not seal repository snapshot"
+      );
+    } finally {
+      setSealAction(undefined);
     }
   }
 
@@ -228,6 +330,93 @@ function BoundRepositoryPanel({
             setBrowserRefreshKey((current) => current + 1);
           }}
         />
+      </div>
+
+      <div className="border-t border-slate-200 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-slate-950">
+              Seal snapshot
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-slate-600">
+              Review a deterministic ledger preview, then commit the ledger and
+              its seal manifest together.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={Boolean(sealAction) || status?.state !== "ready"}
+              onClick={() => void requestSeal("preview")}
+              className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {sealAction === "preview" ? "Previewing…" : "Preview"}
+            </button>
+            <button
+              type="button"
+              disabled={Boolean(sealAction) || !sealPreview}
+              onClick={() => void requestSeal("seal")}
+              className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {sealAction === "seal" ? "Sealing…" : "Seal"}
+            </button>
+            {latestSnapshotId && (
+              <button
+                type="button"
+                disabled={Boolean(sealAction) || status?.state !== "ready"}
+                onClick={() => void requestSeal("supersede")}
+                className="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sealAction === "supersede" ? "Superseding…" : "Supersede"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {sealError && (
+          <p
+            role="alert"
+            className="mt-4 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+          >
+            {sealError}
+          </p>
+        )}
+        {sealPreview && (
+          <dl className="mt-4 grid gap-x-6 gap-y-2 rounded border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="font-medium text-slate-700">Snapshot</dt>
+              <dd className="break-all text-slate-950">
+                {sealPreview.snapshotId}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-slate-700">Input count</dt>
+              <dd className="text-slate-950">{sealPreview.inputs.length}</dd>
+            </div>
+            <div>
+              <dt className="font-medium text-slate-700">Files</dt>
+              <dd className="break-all text-slate-950">
+                {sealPreview.ledgerPath}, {sealPreview.sealPath}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-slate-700">Hashes</dt>
+              <dd className="font-mono text-xs text-slate-950">
+                config {shortHash(sealPreview.configurationHash)} · render{" "}
+                {shortHash(sealPreview.renderHash)}
+              </dd>
+            </div>
+          </dl>
+        )}
+        {sealResult && (
+          <p
+            role="status"
+            className="mt-4 rounded border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
+          >
+            Sealed snapshot {sealResult.snapshotId} at commit{" "}
+            <code>{sealResult.commitSha}</code>.
+          </p>
+        )}
       </div>
     </section>
   );

@@ -57,10 +57,15 @@ export function ResearchRepositoryStatus({
           if (!cancelled) setUnavailable(true);
           return;
         }
-        if (!statusResponse.ok) throw new Error("Could not check repository");
         const statusBody = (await statusResponse.json()) as {
-          status: RepositoryStatus;
+          status?: RepositoryStatus;
         };
+        if (statusResponse.status === 409 && statusBody.status) {
+          if (!cancelled) setStatus(statusBody.status);
+          return;
+        }
+        if (!statusResponse.ok) throw new Error("Could not check repository");
+        if (!statusBody.status) throw new Error("Could not check repository");
         const repositoriesBody = repositoriesResponse.ok
           ? ((await repositoriesResponse.json()) as RepositoryListResponse)
           : undefined;

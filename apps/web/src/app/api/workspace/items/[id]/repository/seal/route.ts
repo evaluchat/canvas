@@ -11,7 +11,13 @@ import {
   StaleRepositoryError,
   type GithubCommitAuthor,
 } from "@/lib/workspace/research-repository/git-adapter";
-import { getGithubInstallationRepository } from "@/lib/workspace/research-repository/github-app";
+import {
+  RepositoryAccessError,
+  assertRepositoryWriteAccess,
+  loadInstallationRepository,
+  repositoryAccessBody,
+  repositoryAccessHttpStatus,
+} from "@/lib/workspace/research-repository/access";
 import { RepositoryLayoutError } from "@/lib/workspace/research-repository/layout";
 import {
   claimRepositoryOperation,
@@ -28,6 +34,8 @@ import {
   commitSealSnapshot,
   previewSealSnapshot,
   SealSnapshotError,
+  sealLedgerPath,
+  sealManifestPath,
   type RepositorySealAccess,
   type SealSnapshotPreview,
 } from "@/lib/workspace/research-repository/seals";
@@ -192,6 +200,12 @@ function operationKey(value: string): string {
 }
 
 function sealError(error: unknown) {
+  if (error instanceof RepositoryAccessError) {
+    return json(
+      repositoryAccessBody(error),
+      repositoryAccessHttpStatus(error.code)
+    );
+  }
   if (error instanceof StaleRepositoryError) {
     return json(
       {
@@ -283,7 +297,7 @@ export async function POST(request: Request, context: RouteContext) {
       ) {
         return json({ error: "Research repository is disconnected" }, 409);
       }
-      const repository = await getGithubInstallationRepository(
+      const repository = await loadInstallationRepository(
         item.binding.installationId,
         item.binding.repositoryId
       );
@@ -306,6 +320,22 @@ export async function POST(request: Request, context: RouteContext) {
 
   const proposedSnapshotId =
     body.action === "seal" ? body.preview.snapshotId : randomUUID();
+  try {
+    await assertRepositoryWriteAccess({
+      installationId: item.binding.installationId,
+      repositoryId: item.binding.repositoryId,
+      branch: item.binding.branch,
+      expectedHeadSha: item.binding.headCommitSha,
+      files: [
+        sealLedgerPath(proposedSnapshotId),
+        sealManifestPath(proposedSnapshotId),
+      ],
+    });
+  } catch (error) {
+    const response = sealError(error);
+    if (response) return response;
+    throw error;
+  }
   const baseCommitSha =
     body.action === "seal"
       ? (body.preview.sealedFromCommit ?? item.binding.headCommitSha)
@@ -409,7 +439,7 @@ export async function POST(request: Request, context: RouteContext) {
       );
       return json({ error: "Research repository is disconnected" }, 409);
     }
-    const repository = await getGithubInstallationRepository(
+    const repository = await loadInstallationRepository(
       item.binding.installationId,
       item.binding.repositoryId
     );

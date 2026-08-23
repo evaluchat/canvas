@@ -85,7 +85,9 @@ const harness = vi.hoisted(() => {
     state,
     hooks,
     client,
-    Client: vi.fn(() => client),
+    Client: vi.fn(function ClientMock() {
+      return client;
+    }),
     findUserByEmail: vi.fn(
       async (_email?: string): Promise<{ id: string; email: string } | null> =>
         null
@@ -651,8 +653,9 @@ describe("research repository workspace items", () => {
     await expect(
       getResearchRepositoryStatus("user-1", repositoryWorkspaceItem())
     ).resolves.toMatchObject({
-      state: "blocked",
+      state: "read_only",
       reason: "repository_public",
+      readonlyReason: "repository_public",
     });
   });
 

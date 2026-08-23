@@ -123,7 +123,7 @@ describe("research repository contracts", () => {
       ["read_only", "unsupported_layout_major"],
       ["read_only", "unsupported_layout_minor"],
       ["read_only", "authorization_required"],
-      ["blocked", "repository_public"],
+      ["read_only", "repository_public"],
       ["blocked", "repository_deleted"],
       ["blocked", "permission_lost"],
       ["blocked", "installation_suspended"],
@@ -159,7 +159,7 @@ describe("research repository contracts", () => {
       RepositoryStatusSchema.safeParse({
         workspaceId: "workspace-synthetic",
         repositoryId: 12001,
-        state: "read_only",
+        state: "blocked",
         reason: "repository_public",
         checkedAt: timestamp,
       }).success

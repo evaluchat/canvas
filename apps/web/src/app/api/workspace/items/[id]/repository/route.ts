@@ -30,9 +30,24 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   try {
-    return NextResponse.json({
-      status: await getResearchRepositoryStatus(auth.user.id, item),
-    });
+    const status = await getResearchRepositoryStatus(auth.user.id, item);
+    const body = {
+      status,
+      ...(status.readonlyReason
+        ? { readonlyReason: status.readonlyReason }
+        : {}),
+    };
+    if (status.reason === "repository_deleted") {
+      return NextResponse.json(
+        {
+          ...body,
+          error: "REPOSITORY_UNAVAILABLE",
+          message: "Repository unavailable (deleted or access removed).",
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(body);
   } catch (error) {
     console.error("[github-research] failed to check repository", error);
     return NextResponse.json(

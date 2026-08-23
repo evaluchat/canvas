@@ -8,6 +8,11 @@ import type {
   ResearchRepositoryBinding,
 } from "@opencanvas/shared/research-repository";
 import { ArtifactEditor } from "./artifact-editor";
+import {
+  RESEARCH_REPOSITORY_TRUST_COPY,
+  REPOSITORY_PUBLIC_COPY,
+  REPOSITORY_UNAVAILABLE_COPY,
+} from "./copy";
 import { RepositoryBrowser } from "./repository-browser";
 
 type RepositoryPanelItem = {
@@ -23,6 +28,8 @@ type RepositoryPanelProps = {
 type RepositoryStatusResponse = {
   status?: RepositoryStatus;
   error?: string;
+  message?: string;
+  readonlyReason?: "repository_public";
 };
 
 type SealPreview = {
@@ -166,10 +173,15 @@ function BoundRepositoryPanel({
       .then(async (response) => {
         const body = (await response.json()) as RepositoryStatusResponse;
         if (response.status === 404) return { available: false as const };
-        if (!response.ok || !body.status) {
-          throw new Error(body.error || "Could not check repository binding");
+        if (body.status) {
+          return { available: true as const, status: body.status };
         }
-        return { available: true as const, status: body.status };
+        if (!response.ok) {
+          throw new Error(
+            body.message || body.error || "Could not check repository binding"
+          );
+        }
+        throw new Error("Could not check repository binding");
       })
       .then((result) => {
         if (cancelled) return;
@@ -313,6 +325,9 @@ function BoundRepositoryPanel({
           <h1 className="text-lg font-semibold text-slate-950">
             Private research repository
           </h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">
+            {RESEARCH_REPOSITORY_TRUST_COPY}
+          </p>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
             <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-800">
               {statusLabel(status)}
@@ -333,6 +348,27 @@ function BoundRepositoryPanel({
         </button>
       </div>
 
+      {(status?.reason === "repository_deleted" ||
+        (status?.state === "blocked" &&
+          (status.reason === "permission_lost" ||
+            status.reason === "branch_deleted" ||
+            status.reason === "force_push"))) && (
+        <p
+          role="status"
+          className="mx-5 mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+        >
+          {REPOSITORY_UNAVAILABLE_COPY}
+        </p>
+      )}
+      {(status?.readonlyReason === "repository_public" ||
+        status?.reason === "repository_public") && (
+        <p
+          role="status"
+          className="mx-5 mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+        >
+          {REPOSITORY_PUBLIC_COPY}
+        </p>
+      )}
       {(checkingError || reconcileError) && (
         <p
           role="alert"
@@ -363,6 +399,7 @@ function BoundRepositoryPanel({
         <ArtifactEditor
           workspaceItemId={item.id}
           artifact={selectedArtifact}
+          readOnly={status?.state !== "ready"}
           refreshKey={editorRefreshKey}
           onCommitted={(commitSha) => {
             setStatus((current) =>
@@ -411,7 +448,10 @@ function BoundRepositoryPanel({
             <button
               type="button"
               disabled={
-                Boolean(sealAction) || !sealPreview || !declarationsConfirmed
+                Boolean(sealAction) ||
+                status?.state !== "ready" ||
+                !sealPreview ||
+                !declarationsConfirmed
               }
               onClick={() => void requestSeal("seal")}
               className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"

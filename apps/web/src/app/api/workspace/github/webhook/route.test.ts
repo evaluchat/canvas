@@ -163,6 +163,40 @@ describe("POST /api/workspace/github/webhook", () => {
     ]);
   });
 
+  it("deletes credentials when the installation is deleted", async () => {
+    const response = await POST(
+      request(
+        { action: "deleted", installation: { id: 99 } },
+        {},
+        "installation"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(harness.deleteCredentials).toHaveBeenCalledWith("user-1");
+    expect(harness.updateInstallation).not.toHaveBeenCalled();
+  });
+
+  it("does not delete credentials when the installation is created", async () => {
+    const response = await POST(
+      request(
+        {
+          action: "created",
+          installation: { id: 99 },
+          repositories: [{ id: 102, full_name: "private/name" }],
+        },
+        {},
+        "installation"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expect(harness.deleteCredentials).not.toHaveBeenCalled();
+    expect(harness.updateInstallation).toHaveBeenCalledWith("user-1", 99, [
+      102,
+    ]);
+  });
+
   it("releases a delivery claim when handling fails and returns 500", async () => {
     harness.recordPush.mockRejectedValue(new Error("store unavailable"));
     vi.spyOn(console, "error").mockImplementation(() => undefined);

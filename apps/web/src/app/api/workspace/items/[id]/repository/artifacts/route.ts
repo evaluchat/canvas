@@ -5,7 +5,12 @@ import { isGithubResearchWorkspacesEnabled } from "@/lib/research-workspaces-ena
 import { verifyUserAuthenticated } from "@/lib/supabase/verify_user_server";
 import { getWorkspaceItem } from "@/lib/workspace/store";
 import { readGithubResearchCredentials } from "@/lib/workspace/research-repository/credentials";
-import { getGithubInstallationRepository } from "@/lib/workspace/research-repository/github-app";
+import {
+  RepositoryAccessError,
+  loadInstallationRepository,
+  repositoryAccessBody,
+  repositoryAccessHttpStatus,
+} from "@/lib/workspace/research-repository/access";
 import {
   listRepositoryArtifactRefs,
   readArtifactBlob,
@@ -55,7 +60,7 @@ export async function GET(request: Request, context: RouteContext) {
     ) {
       return json({ error: "Research repository is disconnected" }, 409);
     }
-    const repository = await getGithubInstallationRepository(
+    const repository = await loadInstallationRepository(
       item.binding.installationId,
       item.binding.repositoryId
     );
@@ -110,6 +115,12 @@ export async function GET(request: Request, context: RouteContext) {
       "[github-research] failed to list repository artifacts",
       repositoryRouteErrorDetails(item.id, error)
     );
+    if (error instanceof RepositoryAccessError) {
+      return json(
+        repositoryAccessBody(error),
+        repositoryAccessHttpStatus(error.code)
+      );
+    }
     if (error instanceof RepositoryLayoutError) {
       return json({ error: error.code }, 422);
     }

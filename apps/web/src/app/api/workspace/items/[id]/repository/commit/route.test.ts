@@ -158,7 +158,9 @@ describe("POST repository artifact commit", () => {
     harness.getRepository.mockResolvedValue({
       owner: "octocat",
       name: "private",
+      private: true,
     });
+    harness.getHead.mockResolvedValue(baseCommitSha);
     harness.claimOperation.mockResolvedValue(pendingOperation);
     harness.startOperation.mockResolvedValue(runningOperation);
     harness.recordResult.mockResolvedValue(landedOperation);
@@ -202,7 +204,7 @@ describe("POST repository artifact commit", () => {
     expect(response.status).toBe(200);
     expect(harness.commitArtifacts).toHaveBeenCalledWith(
       99,
-      { owner: "octocat", name: "private" },
+      { owner: "octocat", name: "private", private: true },
       "evaluchat/workspace",
       expect.objectContaining({
         files: [
@@ -274,7 +276,7 @@ describe("POST repository artifact commit", () => {
     expect(harness.commitArtifacts).toHaveBeenCalledTimes(1);
     expect(harness.commitArtifacts).toHaveBeenCalledWith(
       99,
-      { owner: "octocat", name: "private" },
+      { owner: "octocat", name: "private", private: true },
       "evaluchat/workspace",
       expect.objectContaining({
         authorUser: {
@@ -408,5 +410,34 @@ describe("POST repository artifact commit", () => {
     } finally {
       consoleError.mockRestore();
     }
+  });
+
+  it("rejects writes when the repository became public", async () => {
+    harness.getRepository.mockResolvedValue({
+      owner: "octocat",
+      name: "public",
+      private: false,
+    });
+
+    const response = await POST(request(), context);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      error: "REPOSITORY_READ_ONLY",
+    });
+    expect(harness.claimOperation).not.toHaveBeenCalled();
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("rejects writes when the stored head no longer matches", async () => {
+    harness.getHead.mockResolvedValue("c".repeat(40));
+
+    const response = await POST(request(), context);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "REPOSITORY_CHANGED",
+      files: ["index.md"],
+    });
+    expect(harness.claimOperation).not.toHaveBeenCalled();
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
   });
 });

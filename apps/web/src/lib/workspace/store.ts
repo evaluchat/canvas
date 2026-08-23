@@ -755,8 +755,9 @@ export async function getResearchRepositoryStatus(
     return RepositoryStatusSchema.parse({
       workspaceId: item.id,
       repositoryId: item.binding.repositoryId,
-      state: "blocked",
+      state: "read_only",
       reason: "repository_public",
+      readonlyReason: "repository_public",
       checkedAt: new Date().toISOString(),
     });
   }

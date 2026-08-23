@@ -80,4 +80,24 @@ describe("GET /api/workspace/items/[id]/repository", () => {
       item
     );
   });
+
+  it("surfaces a deleted repository as REPOSITORY_UNAVAILABLE", async () => {
+    const item = { id: "wi_repository", kind: "research_repository" };
+    const status = {
+      workspaceId: "wi_repository",
+      repositoryId: 101,
+      state: "blocked",
+      reason: "repository_deleted",
+    };
+    harness.getWorkspaceItem.mockResolvedValue(item);
+    harness.getResearchRepositoryStatus.mockResolvedValue(status);
+
+    const response = await GET(new Request("http://localhost"), context());
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "REPOSITORY_UNAVAILABLE",
+      status,
+    });
+  });
 });

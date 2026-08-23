@@ -153,7 +153,7 @@ const RepositoryStatusStateByReason: Record<
 > = {
   unsupported_layout_major: "read_only",
   unsupported_layout_minor: "read_only",
-  repository_public: "blocked",
+  repository_public: "read_only",
   repository_deleted: "blocked",
   permission_lost: "blocked",
   installation_suspended: "blocked",
@@ -171,6 +171,7 @@ export const RepositoryStatusSchema = z
     repositoryId: GithubNumericIdSchema,
     state: z.enum(["ready", "read_only", "blocked", "disconnected"]),
     reason: RepositoryStatusReasonSchema.optional(),
+    readonlyReason: z.enum(["repository_public"]).optional(),
     layoutVersion: LayoutVersionSchema.optional(),
     headCommitSha: CommitShaSchema.optional(),
     checkedAt: TimestampSchema,

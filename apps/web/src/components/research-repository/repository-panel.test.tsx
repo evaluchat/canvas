@@ -13,6 +13,11 @@ import type {
   RepositoryStatus,
   ResearchRepositoryBinding,
 } from "@opencanvas/shared/research-repository";
+import {
+  RESEARCH_REPOSITORY_TRUST_COPY,
+  REPOSITORY_PUBLIC_COPY,
+  REPOSITORY_UNAVAILABLE_COPY,
+} from "./copy";
 import { RepositoryPanel } from "./repository-panel";
 
 const navigation = vi.hoisted(() => ({ useSearchParams: vi.fn() }));
@@ -96,6 +101,59 @@ describe("RepositoryPanel", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "/api/workspace/items/workspace-one/repository"
     );
+  });
+
+  it("explains GitHub-side restore and shows an unavailable repository", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse(
+        {
+          error: "REPOSITORY_UNAVAILABLE",
+          status: {
+            workspaceId: "workspace-one",
+            repositoryId: binding.repositoryId,
+            state: "blocked",
+            reason: "repository_deleted",
+            checkedAt: "2026-08-23T00:00:00.000Z",
+          },
+        },
+        409
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      createElement(RepositoryPanel, {
+        item: { id: "workspace-one", binding },
+      })
+    );
+
+    expect(await screen.findByText(REPOSITORY_UNAVAILABLE_COPY)).toBeTruthy();
+    expect(screen.getByText(RESEARCH_REPOSITORY_TRUST_COPY)).toBeTruthy();
+  });
+
+  it("shows read-only copy when the repository is public", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        status: {
+          workspaceId: "workspace-one",
+          repositoryId: binding.repositoryId,
+          state: "read_only",
+          reason: "repository_public",
+          readonlyReason: "repository_public",
+          checkedAt: "2026-08-23T00:00:00.000Z",
+        },
+        readonlyReason: "repository_public",
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      createElement(RepositoryPanel, {
+        item: { id: "workspace-one", binding },
+      })
+    );
+
+    expect(await screen.findByText(REPOSITORY_PUBLIC_COPY)).toBeTruthy();
   });
 
   it("reconciles the binding and refreshes the artifact tree", async () => {

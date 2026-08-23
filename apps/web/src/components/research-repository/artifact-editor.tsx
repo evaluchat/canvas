@@ -11,6 +11,7 @@ type ArtifactEditorProps = {
   workspaceItemId: string;
   artifact?: RepositoryArtifactRef;
   refreshKey?: number;
+  readOnly?: boolean;
   onCommitted?: (commitSha: string) => void;
 };
 
@@ -44,6 +45,7 @@ export function ArtifactEditor({
   workspaceItemId,
   artifact,
   refreshKey = 0,
+  readOnly = false,
   onCommitted,
 }: ArtifactEditorProps) {
   const artifactId = artifact?.artifactId;
@@ -259,6 +261,7 @@ export function ArtifactEditor({
         <button
           type="button"
           disabled={
+            readOnly ||
             supported === false ||
             !dirty ||
             loading ||
@@ -323,7 +326,7 @@ export function ArtifactEditor({
       ) : (
         <textarea
           aria-label={`Edit ${artifact.path}`}
-          disabled={supported === false}
+          disabled={readOnly || supported === false}
           value={content}
           onChange={(event) => {
             setContent(event.target.value);

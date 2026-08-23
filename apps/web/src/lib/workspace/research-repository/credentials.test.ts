@@ -49,7 +49,13 @@ const harness = vi.hoisted(() => {
       }
     ),
   };
-  return { items, store, Client: vi.fn(() => ({ store })) };
+  return {
+    items,
+    store,
+    Client: vi.fn(function ClientMock() {
+      return { store };
+    }),
+  };
 });
 
 vi.mock("@langchain/langgraph-sdk", () => ({ Client: harness.Client }));
@@ -325,10 +331,15 @@ describe("GitHub research credential Store", () => {
 
   it("deletes the credentials item on disconnect", async () => {
     await storeGithubResearchCredentials("user-1", {
-      tokens: { accessToken: "ghu_access" },
+      tokens: { accessToken: "ghu_access", refreshToken: "ghr_refresh" },
       repositoryIds: [],
       displayMetadata: { githubUserId: 7 },
     });
+    await deleteGithubResearchCredentials("user-1");
+    await expect(readGithubResearchCredentials("user-1")).resolves.toBeNull();
+    await expect(
+      readGithubResearchCredentialRecord("user-1")
+    ).resolves.toBeNull();
     await deleteGithubResearchCredentials("user-1");
     await expect(readGithubResearchCredentials("user-1")).resolves.toBeNull();
   });

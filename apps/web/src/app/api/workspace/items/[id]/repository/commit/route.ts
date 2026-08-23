@@ -6,6 +6,12 @@ import {
   updateResearchRepositoryBindingHead,
 } from "@/lib/workspace/store";
 import { getGithubInstallationRepository } from "@/lib/workspace/research-repository/github-app";
+import {
+  RepositoryAccessError,
+  assertRepositoryWriteAccess,
+  repositoryAccessBody,
+  repositoryAccessHttpStatus,
+} from "@/lib/workspace/research-repository/access";
 import { readGithubResearchCredentials } from "@/lib/workspace/research-repository/credentials";
 import {
   commitArtifactBlobs,
@@ -110,6 +116,24 @@ export async function POST(request: Request, context: RouteContext) {
       return json(
         { error: error.code },
         error.code === "ARTIFACT_TOO_LARGE" ? 413 : 422
+      );
+    }
+    throw error;
+  }
+
+  try {
+    await assertRepositoryWriteAccess({
+      installationId: item.binding.installationId,
+      repositoryId: item.binding.repositoryId,
+      branch: item.binding.branch,
+      expectedHeadSha: item.binding.headCommitSha,
+      files: [artifact.path],
+    });
+  } catch (error) {
+    if (error instanceof RepositoryAccessError) {
+      return json(
+        repositoryAccessBody(error),
+        repositoryAccessHttpStatus(error.code)
       );
     }
     throw error;

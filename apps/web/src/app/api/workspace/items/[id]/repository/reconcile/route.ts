@@ -7,7 +7,12 @@ import {
   getWorkspaceItem,
   updateResearchRepositoryBindingHead,
 } from "@/lib/workspace/store";
-import { getGithubInstallationRepository } from "@/lib/workspace/research-repository/github-app";
+import {
+  RepositoryAccessError,
+  loadInstallationRepository,
+  repositoryAccessBody,
+  repositoryAccessHttpStatus,
+} from "@/lib/workspace/research-repository/access";
 import { readGithubResearchCredentials } from "@/lib/workspace/research-repository/credentials";
 import { listRepositoryArtifactRefs } from "@/lib/workspace/research-repository/git-adapter";
 import { RepositoryLayoutError } from "@/lib/workspace/research-repository/layout";
@@ -53,7 +58,7 @@ export async function POST(_request: Request, context: RouteContext) {
     ) {
       return json({ error: "Research repository is disconnected" }, 409);
     }
-    const repository = await getGithubInstallationRepository(
+    const repository = await loadInstallationRepository(
       item.binding.installationId,
       item.binding.repositoryId
     );
@@ -80,15 +85,32 @@ export async function POST(_request: Request, context: RouteContext) {
       operation,
       result.commitSha
     );
-    const status = RepositoryStatusSchema.parse({
-      workspaceId: item.id,
-      repositoryId: item.binding.repositoryId,
-      state: "ready",
-      layoutVersion: item.binding.layoutVersion,
-      headCommitSha: result.commitSha,
-      checkedAt: new Date().toISOString(),
+    const status = repository.private
+      ? RepositoryStatusSchema.parse({
+          workspaceId: item.id,
+          repositoryId: item.binding.repositoryId,
+          state: "ready",
+          layoutVersion: item.binding.layoutVersion,
+          headCommitSha: result.commitSha,
+          checkedAt: new Date().toISOString(),
+        })
+      : RepositoryStatusSchema.parse({
+          workspaceId: item.id,
+          repositoryId: item.binding.repositoryId,
+          state: "read_only",
+          reason: "repository_public",
+          readonlyReason: "repository_public",
+          layoutVersion: item.binding.layoutVersion,
+          headCommitSha: result.commitSha,
+          checkedAt: new Date().toISOString(),
+        });
+    return json({
+      status,
+      artifacts: result.artifacts,
+      ...(status.readonlyReason
+        ? { readonlyReason: status.readonlyReason }
+        : {}),
     });
-    return json({ status, artifacts: result.artifacts });
   } catch (error) {
     if (operation) {
       try {
@@ -108,6 +130,12 @@ export async function POST(_request: Request, context: RouteContext) {
       "[github-research] failed to reconcile repository",
       repositoryRouteErrorDetails(item.id, error)
     );
+    if (error instanceof RepositoryAccessError) {
+      return json(
+        repositoryAccessBody(error),
+        repositoryAccessHttpStatus(error.code)
+      );
+    }
     if (error instanceof RepositoryLayoutError) {
       return json({ error: error.code }, 422);
     }

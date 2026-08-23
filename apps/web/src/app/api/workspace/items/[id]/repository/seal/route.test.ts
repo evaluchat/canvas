@@ -25,6 +25,7 @@ const harness = vi.hoisted(() => {
     record: vi.fn(),
     complete: vi.fn(),
     fail: vi.fn(),
+    getHead: vi.fn(),
   };
 });
 
@@ -51,6 +52,7 @@ vi.mock(
       typeof import("@/lib/workspace/research-repository/git-adapter")
     >()),
     StaleRepositoryError: harness.StaleRepositoryError,
+    getRepositoryBranchHead: harness.getHead,
   })
 );
 vi.mock("@/lib/workspace/ledger-publish", () => ({
@@ -183,7 +185,12 @@ describe("POST repository seal", () => {
       tokens: { accessToken: "not-retained" },
       displayMetadata: { githubUserId: 7, login: "researcher" },
     });
-    harness.repository.mockResolvedValue({ owner: "octocat", name: "private" });
+    harness.repository.mockResolvedValue({
+      owner: "octocat",
+      name: "private",
+      private: true,
+    });
+    harness.getHead.mockResolvedValue(baseCommitSha);
     harness.preview.mockResolvedValue(preview);
     harness.commit.mockResolvedValue({
       commitSha: resultCommitSha,
@@ -215,7 +222,7 @@ describe("POST repository seal", () => {
     expect(harness.preview).toHaveBeenCalledWith({
       binding: item.binding,
       credentials: expect.objectContaining({ installationId: 99 }),
-      repository: { owner: "octocat", name: "private" },
+      repository: { owner: "octocat", name: "private", private: true },
     });
     expect(harness.commit).not.toHaveBeenCalled();
     expect(harness.claim).not.toHaveBeenCalled();

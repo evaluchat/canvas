@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { RESEARCH_REPOSITORY_TRUST_COPY } from "@/components/research-repository/copy";
 import { WorkspaceItem } from "@/lib/workspace/types";
 
 export type CatalogResult = {
@@ -258,7 +259,8 @@ export function CreateWorkspaceItemDialog({
             {!loading && !githubRepositories?.connected && (
               <div className="rounded-lg border p-4">
                 <p className="text-sm text-muted-foreground">
-                  Connect GitHub to choose an installation repository.
+                  Connect GitHub to choose an installation repository.{" "}
+                  {RESEARCH_REPOSITORY_TRUST_COPY}
                 </p>
                 <Button asChild className="mt-3" size="sm">
                   <a href="/api/workspace/github/authorize">Connect GitHub</a>

@@ -1,3 +1,4 @@
+import { RepositoryAccessError } from "./access";
 import { RepositoryLayoutError } from "./layout";
 
 export function repositoryRouteErrorDetails(
@@ -5,6 +6,9 @@ export function repositoryRouteErrorDetails(
   error: unknown
 ): { workspaceId: string; code: string; name?: string } {
   if (error instanceof RepositoryLayoutError) {
+    return { workspaceId, code: error.code };
+  }
+  if (error instanceof RepositoryAccessError) {
     return { workspaceId, code: error.code };
   }
   return {

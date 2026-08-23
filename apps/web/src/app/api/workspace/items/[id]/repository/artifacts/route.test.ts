@@ -80,6 +80,18 @@ describe("GET repository artifacts", () => {
     expect(harness.verifyUserAuthenticated).not.toHaveBeenCalled();
   });
 
+  it("surfaces a deleted repository as REPOSITORY_UNAVAILABLE", async () => {
+    harness.getRepository.mockRejectedValue(
+      Object.assign(new Error("Not Found"), { status: 404 })
+    );
+
+    const response = await GET(new Request("http://localhost"), context);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "REPOSITORY_UNAVAILABLE",
+    });
+  });
+
   it("lists managed refs with no-store caching", async () => {
     const response = await GET(new Request("http://localhost"), context);
     expect(response.status).toBe(200);

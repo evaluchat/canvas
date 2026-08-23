@@ -51,4 +51,12 @@ describe("POST /api/workspace/github/disconnect", () => {
       "user-1"
     );
   });
+
+  it("is safe to disconnect twice", async () => {
+    const first = await POST(request());
+    const second = await POST(request());
+    expect(first.status).toBe(204);
+    expect(second.status).toBe(204);
+    expect(harness.deleteGithubResearchCredentials).toHaveBeenCalledTimes(2);
+  });
 });

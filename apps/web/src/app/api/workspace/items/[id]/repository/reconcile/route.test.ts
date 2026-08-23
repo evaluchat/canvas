@@ -78,6 +78,7 @@ describe("POST repository reconcile", () => {
     harness.getRepository.mockResolvedValue({
       owner: "octocat",
       name: "private",
+      private: true,
     });
     harness.listArtifacts.mockResolvedValue({
       artifacts,
@@ -108,7 +109,7 @@ describe("POST repository reconcile", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(harness.listArtifacts).toHaveBeenCalledWith(
       99,
-      { owner: "octocat", name: "private" },
+      { owner: "octocat", name: "private", private: true },
       "evaluchat/workspace",
       "1.0"
     );
@@ -137,6 +138,19 @@ describe("POST repository reconcile", () => {
       },
       artifacts,
     });
+  });
+
+  it("surfaces a deleted repository as REPOSITORY_UNAVAILABLE", async () => {
+    harness.getRepository.mockRejectedValue(
+      Object.assign(new Error("Not Found"), { status: 404 })
+    );
+
+    const response = await POST(new Request("http://localhost"), context);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      error: "REPOSITORY_UNAVAILABLE",
+    });
+    expect(harness.updateHead).not.toHaveBeenCalled();
   });
 
   it("returns a redacted 4xx layout error without logging its path", async () => {

@@ -760,6 +760,74 @@ describe("research repository workspace items", () => {
     spy.mockRestore();
   });
 
+  it("retains unknown research repository fields across a write/read cycle", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const item = await createResearchRepositoryItem("user-1", {
+      repositoryId: 101,
+      installationId: 99,
+    });
+    const stored = harness.state.manifest.items[item.id];
+    harness.state.manifest = {
+      ...harness.state.manifest,
+      defaultItemId: undefined,
+      items: {
+        ...harness.state.manifest.items,
+        [item.id]: {
+          ...stored,
+          futureField: "schema-v2",
+          binding: {
+            ...stored.binding,
+            futureBindingField: "keep-me",
+          },
+        },
+      },
+    };
+
+    harness.readGithubResearchCredentials.mockResolvedValue(
+      connectedGithubCredentials([101, 102])
+    );
+    harness.getGithubInstallationRepository.mockResolvedValue({
+      id: 102,
+      name: "other",
+      nameWithOwner: "octocat/other",
+      owner: "octocat",
+      private: true,
+      defaultBranch: "main",
+    });
+    await createResearchRepositoryItem("user-1", {
+      repositoryId: 102,
+      installationId: 99,
+    });
+
+    expect(harness.state.manifest.items[item.id]).toMatchObject({
+      id: item.id,
+      kind: "research_repository",
+      unusable: true,
+      futureField: "schema-v2",
+      binding: {
+        repositoryId: 101,
+        installationId: 99,
+        branch: "evaluchat/workspace",
+        headCommitSha: stored.binding.headCommitSha,
+        futureBindingField: "keep-me",
+      },
+    });
+    expect(spy.mock.calls.flat().join(" ")).toContain(item.id);
+    await expect(
+      createResearchRepositoryItem("user-1", {
+        repositoryId: 101,
+        installationId: 99,
+      })
+    ).rejects.toBeInstanceOf(ResearchRepositoryBindingError);
+
+    const selected = await ensureDefaultWorkspaceItem("user-1");
+    expect(selected?.id).not.toBe(item.id);
+    expect(
+      selected && "unusable" in selected && selected.unusable === true
+    ).toBe(false);
+    spy.mockRestore();
+  });
+
   it("projects a GitHub outage as unavailable instead of permission lost", async () => {
     harness.getGithubInstallationRepository.mockRejectedValue(
       Object.assign(new Error("Bad Gateway"), { status: 502 })

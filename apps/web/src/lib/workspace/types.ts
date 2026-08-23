@@ -236,7 +236,10 @@ export type UnusableResearchRepositoryWorkspaceItem = {
   status?: string;
   updatedAt: string;
   createdAt: string;
-  binding?: { repositoryId?: number };
+  binding?: {
+    repositoryId?: number;
+    [key: string]: unknown;
+  };
 };
 
 export type WorkspaceItem =

@@ -227,18 +227,9 @@ function retainUnusableResearchRepository(
   const raw = value as Record<string, unknown>;
   const id = typeof raw.id === "string" ? raw.id : undefined;
   if (!id) return undefined;
-  const binding =
-    raw.binding &&
-    typeof raw.binding === "object" &&
-    !Array.isArray(raw.binding)
-      ? (raw.binding as Record<string, unknown>)
-      : undefined;
-  const repositoryId =
-    typeof binding?.repositoryId === "number"
-      ? binding.repositoryId
-      : undefined;
   console.error("[workspace] retained unusable research_repository item", id);
   return {
+    ...raw,
     id,
     kind: "research_repository",
     unusable: true,
@@ -252,9 +243,7 @@ function retainUnusableResearchRepository(
         : typeof raw.updatedAt === "string"
           ? raw.updatedAt
           : "1970-01-01T00:00:00.000Z",
-    ...(typeof raw.ownerId === "string" ? { ownerId: raw.ownerId } : {}),
-    ...(repositoryId !== undefined ? { binding: { repositoryId } } : {}),
-  };
+  } as UnusableResearchRepositoryWorkspaceItem;
 }
 
 function normaliseWorkspaceItem(value: unknown): WorkspaceItem | undefined {

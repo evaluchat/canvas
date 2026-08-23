@@ -199,6 +199,31 @@ describe("workspace item lifecycle", () => {
     expect(harness.state.manifest.initialized).toBe(true);
   });
 
+  it("skips retained unusable research repositories when selecting a default item", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const created = await ensureDefaultWorkspaceItem("user-1");
+    expect(created).toBeDefined();
+
+    harness.state.manifest = {
+      ...harness.state.manifest,
+      defaultItemId: undefined,
+      items: {
+        "broken-repo": {
+          id: "broken-repo",
+          kind: "research_repository",
+          binding: { repositoryId: 101 },
+        },
+        ...harness.state.manifest.items,
+      },
+    };
+
+    const item = await ensureDefaultWorkspaceItem("user-1");
+    expect(item?.id).toBe(created!.id);
+    expect(harness.state.manifest.defaultItemId).toBe(created!.id);
+    expect(spy.mock.calls.flat().join(" ")).toContain("broken-repo");
+    spy.mockRestore();
+  });
+
   it("does not recreate the original item after explicit deletion", async () => {
     const item = await ensureDefaultWorkspaceItem("user-1");
     await deleteWorkspaceItem("user-1", item!.id);

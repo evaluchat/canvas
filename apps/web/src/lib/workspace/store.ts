@@ -491,18 +491,37 @@ function createItem(userId: string, templateId: string): WorkspaceItem {
   };
 }
 
+function isSelectableDefaultItem(
+  item: WorkspaceItem | undefined
+): item is UsableWorkspaceItem {
+  return item !== undefined && !("unusable" in item && item.unusable === true);
+}
+
 export async function ensureDefaultWorkspaceItem(
   userId: string
 ): Promise<WorkspaceItem | undefined> {
   return withUserLock(userId, async () => {
     const manifest = await readManifest(userId);
-    const existing = manifest.defaultItemId
+    const pointed = manifest.defaultItemId
       ? manifest.items[manifest.defaultItemId]
-      : Object.values(manifest.items).sort((a, b) =>
-          (a.createdAt ?? a.updatedAt).localeCompare(b.createdAt ?? b.updatedAt)
-        )[0];
+      : undefined;
+    if (pointed && !isSelectableDefaultItem(pointed)) {
+      console.error(
+        "[workspace] skipping unusable default workspace item",
+        pointed.id
+      );
+    }
+    const existing = isSelectableDefaultItem(pointed)
+      ? pointed
+      : Object.values(manifest.items)
+          .filter(isSelectableDefaultItem)
+          .sort((a, b) =>
+            (a.createdAt ?? a.updatedAt).localeCompare(
+              b.createdAt ?? b.updatedAt
+            )
+          )[0];
     if (existing) {
-      if (!manifest.defaultItemId || !manifest.initialized) {
+      if (manifest.defaultItemId !== existing.id || !manifest.initialized) {
         manifest.defaultItemId = existing.id;
         manifest.initialized = true;
         await writeManifest(userId, manifest);

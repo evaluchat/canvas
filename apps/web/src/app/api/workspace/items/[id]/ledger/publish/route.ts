@@ -163,9 +163,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       status: pullRequest.status,
       pullRequestUrl: pullRequest.url,
       pullRequestNumber: pullRequest.number,
-      ...(pullRequest.status === "merged" && pullRequest.mergedAt
-        ? { mergedAt: pullRequest.mergedAt }
-        : {}),
     };
     await updateLedgerSnapshotPublication(auth.user.id, id, { publication });
     return NextResponse.json({
@@ -176,9 +173,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         item.snapshot.methodId
       ),
       lintConclusion: pullRequest.lintConclusion,
-      ...(pullRequest.autoMergeError
-        ? { autoMergeError: pullRequest.autoMergeError }
-        : {}),
     });
   } catch (error) {
     if (error instanceof WorkspaceItemNotFoundError) {

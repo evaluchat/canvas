@@ -200,6 +200,112 @@ function kindFromType(value: unknown): AuthorableArtifactKind | undefined {
   return typeof value === "string" ? typeToKind[value] : undefined;
 }
 
+const anchorOrAliasAtLineStart = /^(?:[&*])[A-Za-z_][A-Za-z0-9_-]*/;
+const anchorOrAliasAfterStructuralToken =
+  /(?::\s+|-\s+|[,\[{])[&*][A-Za-z_][A-Za-z0-9_-]*/;
+const blockScalarAtLineEnd = /[|>](?:[+-][1-9]?|[1-9][+-]?)?[ \t]*$/;
+
+function isUnescapedDoubleQuote(line: string, index: number): boolean {
+  let backslashCount = 0;
+  for (
+    let preceding = index - 1;
+    preceding >= 0 && line[preceding] === "\\";
+    preceding -= 1
+  ) {
+    backslashCount += 1;
+  }
+  return backslashCount % 2 === 0;
+}
+
+function containsAnchorOrAliasToken(text: string): boolean {
+  let inDoubleQuotedScalar = false;
+  let inSingleQuotedScalar = false;
+  let blockScalarIndent: number | undefined;
+
+  for (const line of text.split(/\r?\n/)) {
+    const indentation = line.match(/^[ \t]*/)?.[0].length ?? 0;
+
+    if (blockScalarIndent !== undefined) {
+      if (line.trim().length === 0 || indentation > blockScalarIndent) {
+        continue;
+      }
+      blockScalarIndent = undefined;
+    }
+
+    const bareSegments: Array<{ start: number; text: string }> = [];
+    let bareSegmentStart =
+      inDoubleQuotedScalar || inSingleQuotedScalar ? undefined : 0;
+
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+
+      if (inDoubleQuotedScalar) {
+        if (character === '"' && isUnescapedDoubleQuote(line, index)) {
+          inDoubleQuotedScalar = false;
+          bareSegmentStart = index + 1;
+        }
+        continue;
+      }
+
+      if (inSingleQuotedScalar) {
+        if (character === "'") {
+          if (line[index + 1] === "'") {
+            index += 1;
+          } else {
+            inSingleQuotedScalar = false;
+            bareSegmentStart = index + 1;
+          }
+        }
+        continue;
+      }
+
+      if (
+        (character === '"' && isUnescapedDoubleQuote(line, index)) ||
+        character === "'"
+      ) {
+        if (bareSegmentStart !== undefined) {
+          bareSegments.push({
+            start: bareSegmentStart,
+            text: line.slice(bareSegmentStart, index),
+          });
+        }
+        bareSegmentStart = undefined;
+        inDoubleQuotedScalar = character === '"';
+        inSingleQuotedScalar = character === "'";
+      }
+    }
+
+    if (bareSegmentStart !== undefined) {
+      bareSegments.push({
+        start: bareSegmentStart,
+        text: line.slice(bareSegmentStart),
+      });
+    }
+
+    for (const segment of bareSegments) {
+      const lineStartText =
+        segment.start === 0 ? segment.text.replace(/^[ \t]*/, "") : "";
+      if (
+        (lineStartText && anchorOrAliasAtLineStart.test(lineStartText)) ||
+        anchorOrAliasAfterStructuralToken.test(segment.text)
+      ) {
+        return true;
+      }
+    }
+
+    const finalSegment = bareSegments[bareSegments.length - 1];
+    if (
+      finalSegment &&
+      finalSegment.start + finalSegment.text.length === line.length &&
+      blockScalarAtLineEnd.test(finalSegment.text)
+    ) {
+      blockScalarIndent = indentation;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Parse an artifact's leading YAML block without js-yaml's default schema.
  * JSON_SCHEMA keeps scalar resolution predictable and excludes language-specific
@@ -212,7 +318,7 @@ export function parseArtifactFrontMatter(
   if (typeof source !== "string") return source;
 
   // JSON_SCHEMA still implements YAML graph aliases, which authoring forbids.
-  if (/(?:^|[\s[\]{},:])[&*][^\s[\]{},]+/m.test(source)) {
+  if (containsAnchorOrAliasToken(source)) {
     return failure("YAML aliases and anchors are not allowed");
   }
 

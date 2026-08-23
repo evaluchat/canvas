@@ -67,6 +67,38 @@ describe("artifact front-matter authoring", () => {
     expect(validateFindingFrontMatter(finding).ok).toBe(true);
   });
 
+  it.each([
+    ['description: "Use *emphasis*"'],
+    ["description: 'Use & more'"],
+    ["description: |\n  some *text* & more"],
+    ["description: use *emphasis* here"],
+  ])("accepts non-token asterisks and ampersands in %s", (description) => {
+    const source = method.replace(
+      "description: A safe synthetic method.",
+      description
+    );
+
+    expect(parseArtifactFrontMatter(source).ok).toBe(true);
+  });
+
+  it.each([
+    ["an alias", "description: *anchorName"],
+    ["an anchor", "description: &anchorName value"],
+    ["a sequence of aliases", "tags:\n  - *a\n  - *b"],
+  ])("rejects %s tokens", (_label, replacement) => {
+    const target = replacement.startsWith("tags:")
+      ? "tags: [method, synthetic]"
+      : "description: A safe synthetic method.";
+    const parsed = parseArtifactFrontMatter(
+      method.replace(target, replacement)
+    );
+
+    expect(parsed).toEqual({
+      ok: false,
+      reason: "YAML aliases and anchors are not allowed",
+    });
+  });
+
   it("accepts canonical ledger evidence that uses method fields as its identity", () => {
     const ledgerEvidence = `---
 type: Evidence Contribution

@@ -7,8 +7,22 @@ const harness = vi.hoisted(() => ({
   listInstallationsForAuthenticatedUser: vi.fn(),
   listInstallationReposForAuthenticatedUser: vi.fn(),
   Octokit: vi.fn(function OctokitMock() {
+    const beforeRequest: Array<(options: Record<string, unknown>) => void> = [];
     return {
-      request: harness.request,
+      hook: {
+        before(event: string, fn: (options: Record<string, unknown>) => void) {
+          if (event === "request") beforeRequest.push(fn);
+        },
+      },
+      request: async (route: string, options: Record<string, unknown> = {}) => {
+        const next = { ...options };
+        for (const hook of beforeRequest) hook(next);
+        const signal = next.signal as AbortSignal | undefined;
+        if (signal?.aborted) {
+          throw Object.assign(new Error("aborted"), { name: "AbortError" });
+        }
+        return harness.request(route, next);
+      },
       paginate: harness.paginate,
       auth: harness.auth,
       rest: {
@@ -32,6 +46,7 @@ vi.mock("@octokit/auth-app", () => ({
 import {
   buildGithubAuthorizationUrl,
   createGithubRepositoryBranch,
+  createGithubUserOctokit,
   createPkceChallenge,
   exchangeGithubOAuthCode,
   generatePkcePair,
@@ -275,6 +290,36 @@ describe("GitHub App OAuth helpers", () => {
         branch: "evaluchat/workspace",
       })
     );
+  });
+
+  it("uses a fresh request timeout so one abort does not poison the client", async () => {
+    const controllers: AbortController[] = [];
+    const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      const controller = new AbortController();
+      controllers.push(controller);
+      return controller.signal;
+    });
+    harness.request.mockResolvedValue({ data: { id: 7, login: "octo" } });
+    const octokit = createGithubUserOctokit("ghu_access");
+
+    try {
+      await octokit.request("GET /user");
+      expect(controllers).toHaveLength(1);
+      controllers[0].abort();
+      await expect(octokit.request("GET /user")).resolves.toMatchObject({
+        data: { login: "octo" },
+      });
+      expect(controllers).toHaveLength(2);
+      expect(controllers[0]).not.toBe(controllers[1]);
+      expect(harness.request).toHaveBeenCalledTimes(2);
+      expect(harness.Octokit.mock.calls[0]?.[0]).not.toEqual(
+        expect.objectContaining({
+          request: expect.objectContaining({ signal: expect.any(Object) }),
+        })
+      );
+    } finally {
+      timeout.mockRestore();
+    }
   });
 
   it("creates a branch ref with installation auth", async () => {

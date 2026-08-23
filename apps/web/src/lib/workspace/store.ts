@@ -12,6 +12,7 @@ import {
   type ResearchRepositoryWorkspaceItem,
 } from "@opencanvas/shared/research-repository";
 import { LANGGRAPH_API_URL } from "@/constants";
+import { githubErrorStatus } from "./research-repository/github-error-status";
 import {
   FormValidationError,
   resolveFormMarkdown,
@@ -35,8 +36,11 @@ import {
   MethodSource,
   MethodWorkspaceItem,
   PendingMethodInvite,
+  UnusableResearchRepositoryWorkspaceItem,
+  UsableWorkspaceItem,
   WorkspaceItem,
   WorkspaceManifest,
+  isUsableResearchRepository,
 } from "./types";
 import {
   EvidenceLedgerResolutionError,
@@ -216,6 +220,43 @@ function namespace(userId: string): string[] {
   return ["workspace_items", userId];
 }
 
+function retainUnusableResearchRepository(
+  value: unknown
+): UnusableResearchRepositoryWorkspaceItem | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const id = typeof raw.id === "string" ? raw.id : undefined;
+  if (!id) return undefined;
+  const binding =
+    raw.binding &&
+    typeof raw.binding === "object" &&
+    !Array.isArray(raw.binding)
+      ? (raw.binding as Record<string, unknown>)
+      : undefined;
+  const repositoryId =
+    typeof binding?.repositoryId === "number"
+      ? binding.repositoryId
+      : undefined;
+  console.error("[workspace] retained unusable research_repository item", id);
+  return {
+    id,
+    kind: "research_repository",
+    unusable: true,
+    updatedAt:
+      typeof raw.updatedAt === "string"
+        ? raw.updatedAt
+        : "1970-01-01T00:00:00.000Z",
+    createdAt:
+      typeof raw.createdAt === "string"
+        ? raw.createdAt
+        : typeof raw.updatedAt === "string"
+          ? raw.updatedAt
+          : "1970-01-01T00:00:00.000Z",
+    ...(typeof raw.ownerId === "string" ? { ownerId: raw.ownerId } : {}),
+    ...(repositoryId !== undefined ? { binding: { repositoryId } } : {}),
+  };
+}
+
 function normaliseWorkspaceItem(value: unknown): WorkspaceItem | undefined {
   if (!value || typeof value !== "object") return undefined;
   const item = value as WorkspaceItem & {
@@ -223,7 +264,8 @@ function normaliseWorkspaceItem(value: unknown): WorkspaceItem | undefined {
   };
   if (item.kind === "research_repository") {
     const parsed = ResearchRepositoryWorkspaceItemSchema.safeParse(value);
-    return parsed.success ? parsed.data : undefined;
+    if (parsed.success) return parsed.data;
+    return retainUnusableResearchRepository(value);
   }
   if (
     item.kind === "markdown_template" &&
@@ -457,7 +499,7 @@ export async function ensureDefaultWorkspaceItem(
     const existing = manifest.defaultItemId
       ? manifest.items[manifest.defaultItemId]
       : Object.values(manifest.items).sort((a, b) =>
-          a.createdAt.localeCompare(b.createdAt)
+          (a.createdAt ?? a.updatedAt).localeCompare(b.createdAt ?? b.updatedAt)
         )[0];
     if (existing) {
       if (!manifest.defaultItemId || !manifest.initialized) {
@@ -579,7 +621,7 @@ export async function createResearchRepositoryItem(
     const duplicate = Object.values(manifest.items).some(
       (item) =>
         item.kind === "research_repository" &&
-        item.binding.repositoryId === input.repositoryId
+        item.binding?.repositoryId === input.repositoryId
     );
     if (duplicate) {
       throw new ResearchRepositoryBindingError(
@@ -661,17 +703,6 @@ export async function createResearchRepositoryItem(
   });
 }
 
-function githubErrorStatus(error: unknown): number | undefined {
-  const candidate = error as {
-    status?: unknown;
-    statusCode?: unknown;
-    response?: { status?: unknown };
-  };
-  const status =
-    candidate?.status ?? candidate?.statusCode ?? candidate?.response?.status;
-  return typeof status === "number" ? status : undefined;
-}
-
 function githubFailureStatus(
   item: ResearchRepositoryWorkspaceItem,
   error: unknown,
@@ -679,6 +710,8 @@ function githubFailureStatus(
 ): RepositoryStatus {
   const status = githubErrorStatus(error);
   const message = error instanceof Error ? error.message : "";
+  const transient =
+    (typeof status === "number" && status >= 500) || status === undefined;
   const failure =
     status === 404
       ? { state: "blocked" as const, reason: missingReason }
@@ -692,10 +725,15 @@ function githubFailureStatus(
               state: "blocked" as const,
               reason: "installation_suspended" as const,
             }
-          : {
-              state: "blocked" as const,
-              reason: "permission_lost" as const,
-            };
+          : transient
+            ? {
+                state: "blocked" as const,
+                reason: "github_unavailable" as const,
+              }
+            : {
+                state: "blocked" as const,
+                reason: "permission_lost" as const,
+              };
   return RepositoryStatusSchema.parse({
     workspaceId: item.id,
     repositoryId: item.binding.repositoryId,
@@ -776,13 +814,17 @@ export async function getResearchRepositoryStatus(
   const [major, minor] = item.binding.layoutVersion
     .split(".")
     .map((part) => Number(part));
-  if (major !== 1 || minor !== 0) {
+  const [supportedMajor, supportedMinor] =
+    RESEARCH_REPOSITORY_LAYOUT_VERSION.split(".").map((part) => Number(part));
+  if (major !== supportedMajor || minor !== supportedMinor) {
     return RepositoryStatusSchema.parse({
       workspaceId: item.id,
       repositoryId: item.binding.repositoryId,
       state: "read_only",
       reason:
-        major === 1 ? "unsupported_layout_minor" : "unsupported_layout_major",
+        major === supportedMajor
+          ? "unsupported_layout_minor"
+          : "unsupported_layout_major",
       layoutVersion: item.binding.layoutVersion,
       headCommitSha,
       checkedAt: new Date().toISOString(),
@@ -1936,10 +1978,16 @@ export async function deleteWorkspaceItem(
 export async function getWorkspaceItem(
   userId: string,
   itemId: string
-): Promise<WorkspaceItem | undefined> {
+): Promise<UsableWorkspaceItem | undefined> {
   const manifest = await readManifest(userId);
   const item = manifest.items[itemId];
   if (!item || item.ownerId !== userId || item.status !== "active") {
+    return undefined;
+  }
+  if (
+    item.kind === "research_repository" &&
+    !isUsableResearchRepository(item)
+  ) {
     return undefined;
   }
   if (item.kind === "method" && item.run) {
@@ -1947,7 +1995,7 @@ export async function getWorkspaceItem(
       await reconcileMethodRunSubmissions(userId, item)
     );
   }
-  return enrichWorkspaceItem(item);
+  return enrichWorkspaceItem(item as UsableWorkspaceItem);
 }
 
 export async function updateResearchRepositoryBindingHead(
@@ -1960,9 +2008,9 @@ export async function updateResearchRepositoryBindingHead(
     const item = manifest.items[itemId];
     if (
       !item ||
+      !isUsableResearchRepository(item) ||
       item.ownerId !== userId ||
-      item.status !== "active" ||
-      item.kind !== "research_repository"
+      item.status !== "active"
     ) {
       throw new WorkspaceItemNotFoundError();
     }

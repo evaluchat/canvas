@@ -119,6 +119,40 @@ describe("POST /api/workspace/items", () => {
     );
   });
 
+  it("rejects non-positive or non-integer repository ids", async () => {
+    for (const body of [
+      { kind: "research_repository", installationId: 99, repositoryId: 0 },
+      { kind: "research_repository", installationId: 99, repositoryId: 1.5 },
+      { kind: "research_repository", installationId: -1, repositoryId: 101 },
+    ]) {
+      const response = await POST(request(body));
+      expect(response.status).toBe(400);
+      expect(harness.createResearchRepositoryItem).not.toHaveBeenCalled();
+    }
+  });
+
+  it("returns a binding error code", async () => {
+    harness.createResearchRepositoryItem.mockRejectedValue(
+      new harness.ResearchRepositoryBindingError(
+        "Research repositories must be private"
+      )
+    );
+
+    const response = await POST(
+      request({
+        kind: "research_repository",
+        installationId: 99,
+        repositoryId: 101,
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "Research repositories must be private",
+      code: "repository_public",
+    });
+  });
+
   it("returns 404 for research repositories while the flag is off", async () => {
     harness.enabled.mockReturnValue(false);
 

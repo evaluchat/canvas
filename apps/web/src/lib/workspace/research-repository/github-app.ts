@@ -81,8 +81,19 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
+const GITHUB_REQUEST_TIMEOUT_MS = 15_000;
+
+function requestTimeout() {
+  return {
+    request: { signal: AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS) },
+  };
+}
+
 function oauthOctokit(): Octokit {
-  return new Octokit({ baseUrl: GITHUB_OAUTH_BASE_URL });
+  return new Octokit({
+    baseUrl: GITHUB_OAUTH_BASE_URL,
+    ...requestTimeout(),
+  });
 }
 
 function expiresAt(seconds: unknown, now: number): string | undefined {
@@ -212,7 +223,7 @@ export async function refreshGithubUserTokenIfNeeded(
 }
 
 export function createGithubUserOctokit(accessToken: string): Octokit {
-  return new Octokit({ auth: accessToken });
+  return new Octokit({ auth: accessToken, ...requestTimeout() });
 }
 
 export async function resolveGithubResearchConnection(
@@ -317,6 +328,7 @@ export function createGithubInstallationOctokit(
   return new Octokit({
     authStrategy: createAppAuth,
     auth: githubAppAuthOptions(installationId),
+    ...requestTimeout(),
   });
 }
 

@@ -20,7 +20,7 @@ Copy this directory into a **private** GitHub repository. Bind it through the
 workspace repository API:
 
 `POST /api/workspace/items` with
-`{ "kind": "research_repository", "installationId", "repositoryId" }`.
+`{ "kind": "research_repository", "installationId": 123, "repositoryId": 456 }`.
 
 The managed branch is `evaluchat/workspace`. The repository must stay private.
 

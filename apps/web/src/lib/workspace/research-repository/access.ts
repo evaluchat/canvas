@@ -1,19 +1,26 @@
 import { getGithubInstallationRepository } from "./github-app";
 import { getRepositoryBranchHead } from "./git-adapter";
+import { githubErrorStatus } from "./github-error-status";
+
+export { githubErrorStatus } from "./github-error-status";
 
 export const REPOSITORY_UNAVAILABLE = "REPOSITORY_UNAVAILABLE";
 export const REPOSITORY_READ_ONLY = "REPOSITORY_READ_ONLY";
 export const REPOSITORY_CHANGED = "REPOSITORY_CHANGED";
+export const REPOSITORY_DISCONNECTED = "REPOSITORY_DISCONNECTED";
 
 export const REPOSITORY_UNAVAILABLE_MESSAGE =
   "Repository unavailable (deleted or access removed).";
 export const REPOSITORY_READ_ONLY_MESSAGE =
   "Repository became public — writes disabled.";
+export const REPOSITORY_DISCONNECTED_MESSAGE =
+  "Research repository is disconnected";
 
 export type RepositoryAccessCode =
   | typeof REPOSITORY_UNAVAILABLE
   | typeof REPOSITORY_READ_ONLY
-  | typeof REPOSITORY_CHANGED;
+  | typeof REPOSITORY_CHANGED
+  | typeof REPOSITORY_DISCONNECTED;
 
 export class RepositoryAccessError extends Error {
   constructor(
@@ -24,17 +31,6 @@ export class RepositoryAccessError extends Error {
     super(message);
     this.name = "RepositoryAccessError";
   }
-}
-
-export function githubErrorStatus(error: unknown): number | undefined {
-  const candidate = error as {
-    status?: unknown;
-    statusCode?: unknown;
-    response?: { status?: unknown };
-  };
-  const status =
-    candidate?.status ?? candidate?.statusCode ?? candidate?.response?.status;
-  return typeof status === "number" ? status : undefined;
 }
 
 export function repositoryAccessHttpStatus(code: RepositoryAccessCode): number {

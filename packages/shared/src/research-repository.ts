@@ -142,6 +142,7 @@ const RepositoryStatusReasonSchema = z.enum([
   "authorization_required",
   "credential_corrupt",
   "disconnected",
+  "github_unavailable",
 ]);
 
 type RepositoryStatusReason = z.infer<typeof RepositoryStatusReasonSchema>;
@@ -163,6 +164,7 @@ const RepositoryStatusStateByReason: Record<
   authorization_required: "read_only",
   credential_corrupt: "blocked",
   disconnected: "disconnected",
+  github_unavailable: "blocked",
 };
 
 export const RepositoryStatusSchema = z

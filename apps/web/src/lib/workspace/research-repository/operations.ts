@@ -6,6 +6,7 @@ import {
 } from "@opencanvas/shared/research-repository";
 import { LANGGRAPH_API_URL } from "@/constants";
 import { withUserLock } from "./credentials";
+import { StaleRepositoryError } from "./git-adapter";
 
 export const GITHUB_RESEARCH_OPERATIONS_ROOT = "github_research_operations";
 export const REPOSITORY_OPERATION_LEASE_MS = 5 * 60 * 1000;
@@ -65,6 +66,16 @@ async function readOperation(
   return parsed.success ? parsed.data : undefined;
 }
 
+async function deleteOperation(
+  userId: string,
+  idempotencyKey: string
+): Promise<void> {
+  await client().store.deleteItem(
+    repositoryOperationsNamespace(userId),
+    operationKey(idempotencyKey)
+  );
+}
+
 export async function claimRepositoryOperation(
   userId: string,
   input: {
@@ -78,7 +89,15 @@ export async function claimRepositoryOperation(
 ): Promise<RepositoryOperation> {
   return withUserLock(userId, async () => {
     const existing = await readOperation(userId, input.idempotencyKey);
-    if (existing?.status === "succeeded" || existing?.status === "failed") {
+    if (
+      existing?.status === "failed" &&
+      existing.errorCode === "STALE_REPOSITORY"
+    ) {
+      await deleteOperation(userId, input.idempotencyKey);
+    } else if (
+      existing?.status === "succeeded" ||
+      existing?.status === "failed"
+    ) {
       return existing;
     }
     if (existing?.status === "pending" || existing?.status === "running") {
@@ -123,15 +142,8 @@ export async function claimRepositoryOperation(
         return reclaimed;
       }
 
-      const failed = RepositoryOperationSchema.parse({
-        ...existing,
-        status: "failed",
-        resultCommitSha: undefined,
-        errorCode: "STALE_REPOSITORY",
-        updatedAt: now,
-      });
-      await writeOperation(userId, failed);
-      return failed;
+      await deleteOperation(userId, input.idempotencyKey);
+      throw new StaleRepositoryError(currentHeadCommitSha);
     }
 
     const now = new Date().toISOString();

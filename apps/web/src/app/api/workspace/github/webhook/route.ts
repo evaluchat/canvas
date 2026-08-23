@@ -177,7 +177,10 @@ export async function POST(request: NextRequest) {
       duplicate: owners.length > 0 && !handled,
     });
   } catch (error) {
-    console.error("[github-research] webhook handling failed", error);
+    console.error(
+      "[github-research] webhook handling failed",
+      error instanceof Error ? error.message : "unknown error"
+    );
     return NextResponse.json(
       { error: "Could not handle GitHub webhook" },
       { status: 500 }

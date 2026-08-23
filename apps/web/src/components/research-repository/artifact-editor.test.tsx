@@ -398,10 +398,13 @@ describe("ArtifactEditor", () => {
     fireEvent.change(editor, { target: { value: "# Edited" } });
     fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
 
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
     const refresh = await screen.findByRole("button", {
       name: "Refresh first",
     });
     fireEvent.click(refresh);
+    expect(confirm).toHaveBeenCalled();
 
     expect(await screen.findByDisplayValue("# Fresh")).toBeTruthy();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));

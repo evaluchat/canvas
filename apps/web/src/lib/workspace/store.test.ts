@@ -685,6 +685,82 @@ describe("research repository workspace items", () => {
     });
   });
 
+  it("retains an unusable research repository record across writes", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const item = await createResearchRepositoryItem("user-1", {
+      repositoryId: 101,
+      installationId: 99,
+    });
+    harness.state.manifest = {
+      ...harness.state.manifest,
+      items: {
+        ...harness.state.manifest.items,
+        [item.id]: {
+          id: item.id,
+          kind: "research_repository",
+          binding: { repositoryId: 101 },
+        },
+      },
+    };
+
+    harness.readGithubResearchCredentials.mockResolvedValue(
+      connectedGithubCredentials([101, 102])
+    );
+    harness.getGithubInstallationRepository.mockResolvedValue({
+      id: 102,
+      name: "other",
+      nameWithOwner: "octocat/other",
+      owner: "octocat",
+      private: true,
+      defaultBranch: "main",
+    });
+    await createResearchRepositoryItem("user-1", {
+      repositoryId: 102,
+      installationId: 99,
+    });
+
+    expect(harness.state.manifest.items[item.id]).toMatchObject({
+      id: item.id,
+      kind: "research_repository",
+      unusable: true,
+      binding: { repositoryId: 101 },
+    });
+    expect(spy.mock.calls.flat().join(" ")).toContain(item.id);
+    await expect(
+      createResearchRepositoryItem("user-1", {
+        repositoryId: 101,
+        installationId: 99,
+      })
+    ).rejects.toBeInstanceOf(ResearchRepositoryBindingError);
+    spy.mockRestore();
+  });
+
+  it("projects a GitHub outage as unavailable instead of permission lost", async () => {
+    harness.getGithubInstallationRepository.mockRejectedValue(
+      Object.assign(new Error("Bad Gateway"), { status: 502 })
+    );
+
+    await expect(
+      getResearchRepositoryStatus("user-1", repositoryWorkspaceItem())
+    ).resolves.toMatchObject({
+      state: "blocked",
+      reason: "github_unavailable",
+    });
+  });
+
+  it("projects a network failure as unavailable instead of permission lost", async () => {
+    harness.getGithubRepositoryBranchHead.mockRejectedValue(
+      new Error("fetch failed")
+    );
+
+    await expect(
+      getResearchRepositoryStatus("user-1", repositoryWorkspaceItem())
+    ).resolves.toMatchObject({
+      state: "blocked",
+      reason: "github_unavailable",
+    });
+  });
+
   it("opens an unsupported layout read-only", async () => {
     harness.getGithubRepositoryBranchHead.mockResolvedValue(workspaceBranchSha);
 

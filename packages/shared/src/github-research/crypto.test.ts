@@ -3,6 +3,7 @@ import {
   decryptGithubResearchSecret,
   encryptGithubResearchSecret,
   githubResearchEncryptionKeyId,
+  UnknownGithubResearchEncryptionKeyError,
 } from "./crypto.js";
 
 const TEST_KEY =
@@ -66,7 +67,7 @@ describe("GitHub research credential crypto", () => {
   it("rejects the wrong key", () => {
     const encrypted = encryptGithubResearchSecret("secret", TEST_KEY);
     expect(() => decryptGithubResearchSecret(encrypted, OTHER_KEY)).toThrow(
-      /key id/
+      UnknownGithubResearchEncryptionKeyError
     );
   });
 

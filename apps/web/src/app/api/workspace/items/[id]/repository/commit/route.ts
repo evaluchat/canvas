@@ -6,6 +6,8 @@ import {
   updateResearchRepositoryBindingHead,
 } from "@/lib/workspace/store";
 import {
+  REPOSITORY_DISCONNECTED,
+  REPOSITORY_DISCONNECTED_MESSAGE,
   RepositoryAccessError,
   assertRepositoryPrivate,
   assertRepositoryWriteAccess,
@@ -142,6 +144,17 @@ export async function POST(request: Request, context: RouteContext) {
 
   let operation;
   try {
+    const credentials = await readGithubResearchCredentials(auth.user.id);
+    if (
+      !credentials ||
+      credentials.installationId !== item.binding.installationId ||
+      !credentials.repositoryIds.includes(item.binding.repositoryId)
+    ) {
+      throw new RepositoryAccessError(
+        REPOSITORY_DISCONNECTED,
+        REPOSITORY_DISCONNECTED_MESSAGE
+      );
+    }
     operation = await claimRepositoryOperation(auth.user.id, {
       workspaceId: item.id,
       kind: "commit",
@@ -149,14 +162,6 @@ export async function POST(request: Request, context: RouteContext) {
       artifactIds: [artifact.artifactId],
       baseCommitSha: body.baseCommitSha,
       getCurrentHeadCommitSha: async () => {
-        const credentials = await readGithubResearchCredentials(auth.user.id);
-        if (
-          !credentials ||
-          credentials.installationId !== item.binding.installationId ||
-          !credentials.repositoryIds.includes(item.binding.repositoryId)
-        ) {
-          throw new Error("Research repository is disconnected");
-        }
         const repository = await loadInstallationRepository(
           item.binding.installationId,
           item.binding.repositoryId

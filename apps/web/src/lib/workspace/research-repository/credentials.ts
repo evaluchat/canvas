@@ -3,6 +3,7 @@ import { Client } from "@langchain/langgraph-sdk";
 import {
   decryptGithubResearchSecret,
   encryptGithubResearchSecret,
+  UnknownGithubResearchEncryptionKeyError,
   type GithubResearchEncryptedEnvelope,
 } from "@opencanvas/shared/github-research/crypto";
 import { LANGGRAPH_API_URL } from "@/constants";
@@ -15,6 +16,7 @@ const OAUTH_STATE_TTL_MINUTES = 10;
 const WEBHOOK_DELIVERY_TTL_MINUTES = 7 * 24 * 60;
 const IDENTIFIER_HMAC_DOMAIN = "github-research-identifier-hmac";
 const SEARCH_PAGE_SIZE = 100;
+const MAX_CREDENTIAL_SEARCH_PAGES = 100;
 
 export type GithubResearchCredentialRecord = {
   accessTokenEnc: GithubResearchEncryptedEnvelope;
@@ -357,10 +359,7 @@ export async function readGithubResearchCredentials(
         displayMetadata: metadataRecord,
       };
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message === "Unknown GitHub research encryption key id"
-      ) {
+      if (error instanceof UnknownGithubResearchEncryptionKeyError) {
         await client().store.deleteItem(
           githubResearchCredentialsNamespace(userId),
           GITHUB_RESEARCH_CREDENTIALS_KEY
@@ -388,7 +387,7 @@ export async function findGithubCredentialOwnersByInstallationId(
 ): Promise<string[]> {
   const items = [];
   let offset = 0;
-  while (true) {
+  for (let page = 0; page < MAX_CREDENTIAL_SEARCH_PAGES; page += 1) {
     const response = await client().store.searchItems(
       [GITHUB_RESEARCH_CREDENTIALS_ROOT],
       {

@@ -85,6 +85,8 @@ describe("artifact front-matter authoring", () => {
     ["an alias", "description: *anchorName"],
     ["an anchor", "description: &anchorName value"],
     ["a sequence of aliases", "tags:\n  - *a\n  - *b"],
+    ["a flow-sequence alias", "tags: [alpha, *anchorName]"],
+    ["a spaced flow-sequence alias", "tags: [ *anchorName ]"],
   ])("rejects %s tokens", (_label, replacement) => {
     const target = replacement.startsWith("tags:")
       ? "tags: [method, synthetic]"

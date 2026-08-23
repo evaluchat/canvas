@@ -22,16 +22,43 @@ import {
 const SNAPSHOT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SEAL_MANIFEST_PATH = /^ledger\/seals\/([^/]+)\.seal\.yml$/;
+const METHOD_SEAL_MANIFEST_PATH =
+  /^methods\/[^/]+\/evidence\/ledgers\/([^/]+)\.seal\.yml$/;
+const METHOD_SEAL_RENDER_PATH =
+  /^methods\/([^/]+)\/evidence\/ledgers\/([^/]+)\.en\.md$/;
 const SEAL_INPUT_KINDS = new Set(["method", "evidence", "finding", "ledger"]);
 
 /**
  * Seal outputs live under ledger/seals/ (rendered `<id>.en.md` and
- * `<id>.seal.yml`). The renders carry kind "ledger" and must never feed back
- * into the input set: after the first seal, its own render would otherwise
- * become an input of the next seal and drift configurationHash/renderHash on
- * every seal even when nothing changed.
+ * `<id>.seal.yml`) and, for method-scoped seals, next to the method ledger.
+ * The renders carry kind "ledger" and must never feed back into the input
+ * set: after the first seal, its own render would otherwise become an input
+ * of the next seal and drift configurationHash/renderHash on every seal even
+ * when nothing changed.
  */
 const SEAL_OUTPUT_PREFIX = "ledger/seals/";
+
+function sealManifestSnapshotId(path: string): string | undefined {
+  return (
+    SEAL_MANIFEST_PATH.exec(path)?.[1] ??
+    METHOD_SEAL_MANIFEST_PATH.exec(path)?.[1]
+  );
+}
+
+function isSealManifestPath(path: string): boolean {
+  return SEAL_MANIFEST_PATH.test(path) || METHOD_SEAL_MANIFEST_PATH.test(path);
+}
+
+function isSealRenderPath(
+  path: string,
+  artifacts: readonly RepositoryArtifactRef[]
+): boolean {
+  if (path.startsWith(SEAL_OUTPUT_PREFIX)) return true;
+  const match = METHOD_SEAL_RENDER_PATH.exec(path);
+  if (!match) return false;
+  const manifestPath = `methods/${match[1]}/evidence/ledgers/${match[2]}.seal.yml`;
+  return artifacts.some((artifact) => artifact.path === manifestPath);
+}
 
 export type SealSnapshotErrorCode =
   | "DECLARATIONS_REQUIRED"
@@ -275,7 +302,7 @@ function ledgerSnapshot(
 function sealRefs(artifacts: RepositoryArtifactRef[]): RepositoryArtifactRef[] {
   return artifacts.filter(
     (artifact) =>
-      artifact.kind === "ledger_seal" && SEAL_MANIFEST_PATH.test(artifact.path)
+      artifact.kind === "ledger_seal" && isSealManifestPath(artifact.path)
   );
 }
 
@@ -346,8 +373,7 @@ export async function previewSealSnapshot(
   if (
     options.supersedes &&
     !sealRefs(listed.artifacts).some(
-      (artifact) =>
-        SEAL_MANIFEST_PATH.exec(artifact.path)?.[1] === options.supersedes
+      (artifact) => sealManifestSnapshotId(artifact.path) === options.supersedes
     )
   ) {
     throw new SealSnapshotError(
@@ -360,7 +386,7 @@ export async function previewSealSnapshot(
     .filter(
       (artifact) =>
         SEAL_INPUT_KINDS.has(artifact.kind) &&
-        !artifact.path.startsWith(SEAL_OUTPUT_PREFIX)
+        !isSealRenderPath(artifact.path, listed.artifacts)
     )
     .sort((left, right) => compare(left.path, right.path));
   if (!artifacts.length) {

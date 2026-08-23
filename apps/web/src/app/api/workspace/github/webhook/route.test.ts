@@ -229,4 +229,21 @@ describe("POST /api/workspace/github/webhook", () => {
       "delivery-1"
     );
   });
+
+  it("logs only the error message when webhook handling fails", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    harness.recordPush.mockRejectedValue(
+      Object.assign(new Error("store unavailable"), {
+        secret: "webhook-secret",
+      })
+    );
+
+    await POST(request({ installation: { id: 99 } }));
+
+    expect(JSON.stringify(spy.mock.calls)).not.toContain("webhook-secret");
+    expect(spy).toHaveBeenCalledWith(
+      "[github-research] webhook handling failed",
+      "store unavailable"
+    );
+  });
 });

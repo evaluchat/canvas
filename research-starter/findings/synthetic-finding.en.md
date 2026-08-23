@@ -19,5 +19,5 @@ tags: [finding, synthetic]
 
 > **SYNTHETIC: true.** No real participants.
 
-The critic named the missing SYNTHETIC-default banner. This finding cites the
-seed ledger snapshot only.
+The critic named the missing SYNTHETIC-default banner. This fixture is not
+submittable: it does not cite a published research question or Evidence Ledger.

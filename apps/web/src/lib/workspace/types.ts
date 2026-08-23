@@ -228,6 +228,17 @@ export type LedgerSnapshotWorkspaceItem = Omit<WorkspaceItemBase, "source"> & {
 
 export type FormBackedWorkspaceItem = FormWorkspaceItem | MethodWorkspaceItem;
 
+export type UnusableResearchRepositoryWorkspaceItem = {
+  id: string;
+  kind: "research_repository";
+  unusable: true;
+  ownerId?: string;
+  status?: string;
+  updatedAt: string;
+  createdAt: string;
+  binding?: { repositoryId?: number };
+};
+
 export type WorkspaceItem =
   | MarkdownWorkspaceItem
   | FormWorkspaceItem
@@ -235,7 +246,22 @@ export type WorkspaceItem =
   | MethodParticipantWorkspaceItem
   | LedgerWorkspaceItem
   | LedgerSnapshotWorkspaceItem
-  | ResearchRepositoryWorkspaceItem;
+  | ResearchRepositoryWorkspaceItem
+  | UnusableResearchRepositoryWorkspaceItem;
+
+export function isUsableResearchRepository(
+  item: WorkspaceItem
+): item is ResearchRepositoryWorkspaceItem {
+  return (
+    item.kind === "research_repository" &&
+    !("unusable" in item && item.unusable === true)
+  );
+}
+
+export type UsableWorkspaceItem = Exclude<
+  WorkspaceItem,
+  UnusableResearchRepositoryWorkspaceItem
+>;
 
 export type WorkspaceManifest = {
   initialized: boolean;

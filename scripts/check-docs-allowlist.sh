@@ -12,7 +12,7 @@ fi
 
 violations=()
 while IFS= read -r -d '' file; do
-  rel="${file#$DOCS/}"
+  rel="${file#"$DOCS"/}"
   case "$rel" in
     contributing/*|electron-desktop/*) ;;
     *) violations+=("$rel") ;;

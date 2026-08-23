@@ -51,6 +51,15 @@ function byteLength(value: string): number {
 }
 
 function validateInput(input: ResearchRepositoryAssistantInput): void {
+  for (const message of input.conversation) {
+    const role = (message as { role?: unknown }).role;
+    if (role !== "user" && role !== "assistant") {
+      throw new ResearchRepositoryAssistantPayloadError(
+        'Conversation message role must be "user" or "assistant"'
+      );
+    }
+  }
+
   if (input.conversation.length > MAX_CONVERSATION_MESSAGES) {
     throw new ResearchRepositoryAssistantPayloadError(
       `Conversation exceeds ${MAX_CONVERSATION_MESSAGES} messages`

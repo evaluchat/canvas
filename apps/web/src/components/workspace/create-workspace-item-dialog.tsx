@@ -94,32 +94,37 @@ export function CreateWorkspaceItemDialog({
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || kind !== "research_repository") return;
     let cancelled = false;
     setLoading(true);
     setResults([]);
-    if (kind === "research_repository") {
-      setGithubRepositories(undefined);
-      fetch("/api/workspace/github/repositories", { credentials: "include" })
-        .then((response) => {
-          if (!response.ok) throw new Error("Could not load repositories");
-          return response.json() as Promise<GithubRepositoriesResponse>;
-        })
-        .then((body) => {
-          if (!cancelled) setGithubRepositories(body);
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setGithubRepositories({ connected: false, repositories: [] });
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
+    setGithubRepositories(undefined);
+    fetch("/api/workspace/github/repositories", { credentials: "include" })
+      .then((response) => {
+        if (!response.ok) throw new Error("Could not load repositories");
+        return response.json() as Promise<GithubRepositoriesResponse>;
+      })
+      .then((body) => {
+        if (!cancelled) setGithubRepositories(body);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setGithubRepositories({ connected: false, repositories: [] });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, kind]);
+
+  useEffect(() => {
+    if (!open || kind === "research_repository") return;
+    let cancelled = false;
+    setLoading(true);
+    setResults([]);
     fetch(
       `/api/workspace/catalog?kind=${kind}&q=${encodeURIComponent(query)}`,
       { credentials: "include" }
@@ -158,7 +163,13 @@ export function CreateWorkspaceItemDialog({
   async function createResearchRepository(
     repository: ResearchRepositoryOption
   ) {
-    if (githubRepositories?.installationId === undefined) return;
+    if (githubRepositories?.installationId === undefined) {
+      toast({
+        title: "GitHub installation is unavailable",
+        variant: "destructive",
+      });
+      return;
+    }
     return createWithBody(
       buildResearchRepositoryCreateBody(
         repository,
@@ -307,7 +318,10 @@ export function CreateWorkspaceItemDialog({
                     <button
                       key={repository.id}
                       type="button"
-                      disabled={creating}
+                      disabled={
+                        creating ||
+                        githubRepositories.installationId === undefined
+                      }
                       onClick={() => void createResearchRepository(repository)}
                       className="w-full rounded-lg border p-4 text-left transition hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
                     >

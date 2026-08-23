@@ -132,6 +132,82 @@ describe("ArtifactEditor", () => {
     );
   });
 
+  it("reuses the idempotency key across retries of the same payload", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(artifactResponse("# Original"))
+      .mockResolvedValueOnce(
+        jsonResponse({ error: "Could not commit repository artifact" }, 500)
+      )
+      .mockResolvedValueOnce(jsonResponse({ commitSha: "d".repeat(40) }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      createElement(ArtifactEditor, {
+        workspaceItemId: "workspace-one",
+        artifact,
+      })
+    );
+
+    const editor = await screen.findByDisplayValue("# Original");
+    fireEvent.change(editor, { target: { value: "# Edited" } });
+    fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
+    expect(
+      await screen.findByText("Could not commit repository artifact")
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
+    expect(await screen.findByText("Changes committed")).toBeTruthy();
+
+    const commitBodies = fetchMock.mock.calls
+      .filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+      )
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(commitBodies).toHaveLength(2);
+    expect(commitBodies[0].idempotencyKey).toBe(commitBodies[1].idempotencyKey);
+    expect(commitBodies[0].content).toBe("# Edited");
+  });
+
+  it("mints a new idempotency key after the editor content changes", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(artifactResponse("# Original"))
+      .mockResolvedValueOnce(
+        jsonResponse({ error: "Could not commit repository artifact" }, 500)
+      )
+      .mockResolvedValueOnce(jsonResponse({ commitSha: "d".repeat(40) }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      createElement(ArtifactEditor, {
+        workspaceItemId: "workspace-one",
+        artifact,
+      })
+    );
+
+    const editor = await screen.findByDisplayValue("# Original");
+    fireEvent.change(editor, { target: { value: "# Edited" } });
+    fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
+    expect(
+      await screen.findByText("Could not commit repository artifact")
+    ).toBeTruthy();
+    fireEvent.change(editor, { target: { value: "# Corrected" } });
+    fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
+    expect(await screen.findByText("Changes committed")).toBeTruthy();
+
+    const commitBodies = fetchMock.mock.calls
+      .filter(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST"
+      )
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+    expect(commitBodies).toHaveLength(2);
+    expect(commitBodies[0].content).toBe("# Edited");
+    expect(commitBodies[1].content).toBe("# Corrected");
+    expect(commitBodies[0].idempotencyKey).not.toBe(
+      commitBodies[1].idempotencyKey
+    );
+  });
+
   it("blocks an invalid authorable artifact before sending a commit", async () => {
     const fetchMock = vi
       .fn()
@@ -398,10 +474,13 @@ describe("ArtifactEditor", () => {
     fireEvent.change(editor, { target: { value: "# Edited" } });
     fireEvent.click(screen.getByRole("button", { name: "Commit changes" }));
 
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal("confirm", confirm);
     const refresh = await screen.findByRole("button", {
       name: "Refresh first",
     });
     fireEvent.click(refresh);
+    expect(confirm).toHaveBeenCalled();
 
     expect(await screen.findByDisplayValue("# Fresh")).toBeTruthy();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));

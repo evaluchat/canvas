@@ -149,14 +149,6 @@ export async function POST(request: Request, context: RouteContext) {
       artifactIds: [artifact.artifactId],
       baseCommitSha: body.baseCommitSha,
       getCurrentHeadCommitSha: async () => {
-        const credentials = await readGithubResearchCredentials(auth.user.id);
-        if (
-          !credentials ||
-          credentials.installationId !== item.binding.installationId ||
-          !credentials.repositoryIds.includes(item.binding.repositoryId)
-        ) {
-          throw new Error("Research repository is disconnected");
-        }
         const repository = await loadInstallationRepository(
           item.binding.installationId,
           item.binding.repositoryId
@@ -172,6 +164,15 @@ export async function POST(request: Request, context: RouteContext) {
   } catch (error) {
     if (error instanceof RepositoryOperationInProgressError) {
       return json({ error: "repository_operation_in_progress" }, 409);
+    }
+    if (error instanceof StaleRepositoryError) {
+      return json(
+        {
+          error: "stale_repository",
+          currentHeadCommitSha: error.currentHeadCommitSha,
+        },
+        409
+      );
     }
     if (error instanceof RepositoryAccessError) {
       return json(

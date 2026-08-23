@@ -5,6 +5,7 @@ import {
   createGithubInstallationOctokit,
   getGithubRepositoryBranchHead,
 } from "./github-app";
+import { githubErrorStatus } from "./github-error-status";
 import {
   identifyRepositoryArtifactPath,
   RepositoryLayoutError,
@@ -58,15 +59,28 @@ function repositoryParameters(repository: GithubRepositoryCoordinates) {
   return { owner: repository.owner, repo: repository.name };
 }
 
-function githubErrorStatus(error: unknown): number | undefined {
-  const candidate = error as {
-    status?: unknown;
-    statusCode?: unknown;
-    response?: { status?: unknown };
-  };
-  const status =
-    candidate?.status ?? candidate?.statusCode ?? candidate?.response?.status;
-  return typeof status === "number" ? status : undefined;
+const GITHUB_BLOB_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = next;
+        next += 1;
+        if (index >= items.length) return;
+        results[index] = await mapper(items[index], index);
+      }
+    })
+  );
+  return results;
 }
 
 async function repositoryTree(
@@ -182,12 +196,16 @@ export async function listRepositoryArtifactRefs(
   validateRepositoryArtifactCount(managed.length);
 
   const artifactIds = new Set<string>();
-  const artifacts = await Promise.all(
-    managed.map(async ({ entry, artifact }) => {
-      if (artifactIds.has(artifact.artifactId)) {
-        throw new Error(`Duplicate managed artifact id ${artifact.artifactId}`);
-      }
-      artifactIds.add(artifact.artifactId);
+  for (const { artifact } of managed) {
+    if (artifactIds.has(artifact.artifactId)) {
+      throw new Error(`Duplicate managed artifact id ${artifact.artifactId}`);
+    }
+    artifactIds.add(artifact.artifactId);
+  }
+  const artifacts = await mapWithConcurrency(
+    managed,
+    GITHUB_BLOB_CONCURRENCY,
+    async ({ entry, artifact }) => {
       validateRepositoryArtifactMode(entry.path, entry.mode);
       const buffer = await readBlobBuffer(
         installationId,
@@ -202,7 +220,7 @@ export async function listRepositoryArtifactRefs(
         blobSha: entry.sha,
         contentSha256: createHash("sha256").update(buffer).digest("hex"),
       });
-    })
+    }
   );
 
   return {
@@ -265,8 +283,10 @@ export async function commitArtifactBlobs(
     throw new Error("GitHub returned an invalid base tree");
   }
 
-  const entries = await Promise.all(
-    input.files.map(async (file) => {
+  const entries = await mapWithConcurrency(
+    input.files,
+    GITHUB_BLOB_CONCURRENCY,
+    async (file) => {
       const response = await octokit.request(
         "POST /repos/{owner}/{repo}/git/blobs",
         {
@@ -286,7 +306,7 @@ export async function commitArtifactBlobs(
         type: "blob" as const,
         sha,
       };
-    })
+    }
   );
 
   const treeResponse = await octokit.request(

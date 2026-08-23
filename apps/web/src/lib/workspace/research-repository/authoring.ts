@@ -202,7 +202,7 @@ function kindFromType(value: unknown): AuthorableArtifactKind | undefined {
 
 const anchorOrAliasAtLineStart = /^(?:[&*])[A-Za-z_][A-Za-z0-9_-]*/;
 const anchorOrAliasAfterStructuralToken =
-  /(?::\s+|-\s+|[,\[{])[&*][A-Za-z_][A-Za-z0-9_-]*/;
+  /(?::\s+|-\s+|[,\[{]\s*)[&*][A-Za-z_][A-Za-z0-9_-]*/;
 const blockScalarAtLineEnd = /[|>](?:[+-][1-9]?|[1-9][+-]?)?[ \t]*$/;
 
 function isUnescapedDoubleQuote(line: string, index: number): boolean {

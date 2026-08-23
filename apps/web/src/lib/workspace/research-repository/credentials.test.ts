@@ -65,8 +65,10 @@ import {
   claimGithubWebhookDelivery,
   consumeGithubOAuthState,
   deleteGithubResearchCredentials,
+  CredentialOwnerSearchTruncatedError,
   findGithubCredentialOwnersByInstallationId,
   githubResearchCredentialsNamespace,
+  MAX_CREDENTIAL_SEARCH_PAGES,
   hashGithubCredentialIdentifier,
   readGithubResearchCredentialRecord,
   readGithubResearchCredentials,
@@ -327,6 +329,32 @@ describe("GitHub research credential Store", () => {
       ["github_research_credentials"],
       expect.objectContaining({ limit: 100, offset: 100 })
     );
+  });
+
+  it("errors instead of silently truncating a full last page", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(vi.fn());
+    const fullPage = Array.from({ length: 100 }, (_, index) => ({
+      namespace: ["github_research_credentials", `user-${index}`],
+      key: "credentials",
+      value: { installationId: 99 },
+    }));
+    harness.store.searchItems.mockResolvedValue({ items: fullPage });
+
+    try {
+      await expect(
+        findGithubCredentialOwnersByInstallationId(99)
+      ).rejects.toBeInstanceOf(CredentialOwnerSearchTruncatedError);
+      expect(harness.store.searchItems).toHaveBeenCalledTimes(
+        MAX_CREDENTIAL_SEARCH_PAGES
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        "[github-research] credential owner search truncated",
+        99,
+        MAX_CREDENTIAL_SEARCH_PAGES
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   it("deletes the credentials item on disconnect", async () => {

@@ -13,6 +13,7 @@ import { convertToOpenAIFormat } from "@/lib/convert_messages";
 import { OC_HIDE_FROM_UI_KEY } from "@opencanvas/shared/constants";
 import {
   FINDING_STARTER_TEMPLATE_ID,
+  isUsableResearchRepository,
   type MarkdownWorkspaceItem,
 } from "@/lib/workspace/types";
 import { workspaceItemTitle } from "@/lib/workspace/display";
@@ -289,6 +290,15 @@ export function WorkspaceCanvas() {
 
   const evidenceThreadId = searchParams.get("evidence");
   if (item.kind === "research_repository") {
+    if (!isUsableResearchRepository(item)) {
+      return (
+        <main className="min-h-screen bg-slate-50 p-8">
+          <p className="text-sm text-amber-800">
+            Repository binding is unusable
+          </p>
+        </main>
+      );
+    }
     return (
       <main className="min-h-screen bg-slate-50 p-8">
         <div className="mx-auto max-w-6xl">

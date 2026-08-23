@@ -17,6 +17,13 @@ export type GithubResearchEncryptedEnvelope = {
   ct: string;
 };
 
+export class UnknownGithubResearchEncryptionKeyError extends Error {
+  constructor() {
+    super("Unknown GitHub research encryption key id");
+    this.name = "UnknownGithubResearchEncryptionKeyError";
+  }
+}
+
 function parseEncryptionKey(keyHex: string): Buffer {
   if (!/^[0-9a-fA-F]{64}$/.test(keyHex) || keyHex.length !== KEY_HEX_LENGTH) {
     throw new Error(
@@ -106,7 +113,7 @@ export function decryptGithubResearchSecret(
     (candidate) => envelope.kid === githubResearchEncryptionKeyId(candidate)
   );
   if (!keyHex) {
-    throw new Error("Unknown GitHub research encryption key id");
+    throw new UnknownGithubResearchEncryptionKeyError();
   }
 
   const key = parseEncryptionKey(keyHex);

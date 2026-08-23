@@ -14,6 +14,9 @@ const harness = vi.hoisted(() => {
         items.set(key(namespace, itemKey), structuredClone(value));
       }
     ),
+    deleteItem: vi.fn(async (namespace: string[], itemKey: string) => {
+      items.delete(key(namespace, itemKey));
+    }),
   };
   return {
     items,
@@ -36,6 +39,7 @@ import {
   repositoryOperationsNamespace,
   startRepositoryOperation,
 } from "./operations";
+import { StaleRepositoryError } from "./git-adapter";
 import type { RepositoryOperation } from "@opencanvas/shared/research-repository";
 
 const baseCommitSha = "a".repeat(40);
@@ -190,20 +194,32 @@ describe("repository operation Store", () => {
     expect(running.status).toBe("running");
   });
 
-  it("fails a stale operation when the branch moved elsewhere", async () => {
+  it("does not persist a stale reclaim so the next claim is fresh", async () => {
     const pending = await claimRepositoryOperation("user-1", claim);
     replaceStoredOperation(expire(pending));
 
-    const reclaimed = await claimRepositoryOperation("user-1", {
-      ...claim,
-      getCurrentHeadCommitSha: vi.fn().mockResolvedValue("c".repeat(40)),
-    });
+    await expect(
+      claimRepositoryOperation("user-1", {
+        ...claim,
+        getCurrentHeadCommitSha: vi.fn().mockResolvedValue("c".repeat(40)),
+      })
+    ).rejects.toBeInstanceOf(StaleRepositoryError);
+    expect(harness.items.size).toBe(0);
 
-    expect(reclaimed).toMatchObject({
-      operationId: pending.operationId,
+    const retry = await claimRepositoryOperation("user-1", claim);
+    expect(retry.status).toBe("pending");
+  });
+
+  it("retries a previously failed stale operation under the same key", async () => {
+    const pending = await claimRepositoryOperation("user-1", claim);
+    replaceStoredOperation({
+      ...pending,
       status: "failed",
       errorCode: "STALE_REPOSITORY",
     });
-    expect(storedOperation()).toEqual(reclaimed);
+
+    const retry = await claimRepositoryOperation("user-1", claim);
+    expect(retry.status).toBe("pending");
+    expect(retry.errorCode).toBeUndefined();
   });
 });

@@ -59,6 +59,7 @@ export function ArtifactEditor({
   const [confirmation, setConfirmation] = useState<string>();
   const loadVersion = useRef(0);
   const operationTokenRef = useRef(0);
+  const idempotencyKeyRef = useRef<string>();
   const currentSelectionRef = useRef({ workspaceItemId, artifactId });
   currentSelectionRef.current = { workspaceItemId, artifactId };
 
@@ -113,6 +114,7 @@ export function ArtifactEditor({
     setSupported(undefined);
     setError(undefined);
     setConfirmation(undefined);
+    idempotencyKeyRef.current = undefined;
     if (artifactId) void loadArtifact();
     return () => {
       loadVersion.current += 1;
@@ -123,6 +125,10 @@ export function ArtifactEditor({
     operationTokenRef.current += 1;
     setCommitting(false);
   }, [artifactId, workspaceItemId]);
+
+  useEffect(() => {
+    idempotencyKeyRef.current = undefined;
+  }, [content]);
 
   const dirty = content !== savedContent;
   const frontMatterError = useMemo(() => {
@@ -165,6 +171,9 @@ export function ArtifactEditor({
     setCommitting(true);
     setError(undefined);
     setConfirmation(undefined);
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = newIdempotencyKey();
+    }
 
     try {
       const response = await fetch(
@@ -180,7 +189,7 @@ export function ArtifactEditor({
             baseCommitSha,
             content,
             commitMessage: `Update ${artifact.path}`,
-            idempotencyKey: newIdempotencyKey(),
+            idempotencyKey: idempotencyKeyRef.current,
           }),
         }
       );
@@ -212,6 +221,7 @@ export function ArtifactEditor({
       setSavedContent(content);
       setBaseCommitSha(body.commitSha);
       setConfirmation("Changes committed");
+      idempotencyKeyRef.current = undefined;
       onCommitted?.(body.commitSha);
     } catch (cause) {
       if (!isCurrentOperation()) return;
@@ -286,7 +296,15 @@ export function ArtifactEditor({
           {error.stale && (
             <button
               type="button"
-              onClick={() => void loadArtifact()}
+              onClick={() => {
+                if (
+                  dirty &&
+                  !window.confirm("Refresh and discard unsaved edits?")
+                ) {
+                  return;
+                }
+                void loadArtifact();
+              }}
               className="mt-2 block rounded border border-red-300 bg-white px-2.5 py-1 font-medium text-red-800 hover:bg-red-100"
             >
               Refresh first

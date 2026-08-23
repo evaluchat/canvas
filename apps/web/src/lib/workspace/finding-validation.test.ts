@@ -1,9 +1,20 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   FindingValidationError,
   validateFindingSubmission,
   type ResearchArtifactFetcher,
 } from "./finding-validation";
+
+const STARTER_FINDING = readFileSync(
+  join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../../../research-starter/findings/synthetic-finding.en.md"
+  ),
+  "utf8"
+);
 
 const LEDGER_PATH = "methods/demo-method/evidence/ledgers/ledger-k12-us.en.md";
 const QUESTION_PATH = "theory/threshold-calibration.en.md";
@@ -238,5 +249,10 @@ describe("validateFindingSubmission", () => {
       { fetchArtifact: fetcher() }
     );
     expect(result.ok).toBe(true);
+  });
+
+  it("rejects the synthetic starter finding as non-submittable", async () => {
+    await expectIssue(STARTER_FINDING, "research_questions", /non-empty/i);
+    await expectIssue(STARTER_FINDING, "evidence_ledgers", /non-empty/i);
   });
 });

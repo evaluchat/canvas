@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { CreateWorkspaceItemDialog } from "./create-workspace-item-dialog";
 import type { WorkspaceItem } from "@/lib/workspace/types";
+import { isUsableResearchRepository } from "@/lib/workspace/types";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   workspaceNavGhostClass,
@@ -190,7 +191,13 @@ export function WorkspaceHome({
                           {workspaceItemKicker(item)}
                         </span>
                       </Link>
-                      <ResearchRepositoryStatus item={item} />
+                      {isUsableResearchRepository(item) ? (
+                        <ResearchRepositoryStatus item={item} />
+                      ) : (
+                        <p className="mt-1 text-sm text-amber-800">
+                          Repository binding is unusable
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <Link

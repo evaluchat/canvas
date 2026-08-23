@@ -371,6 +371,49 @@ describe("POST repository artifact commit", () => {
     expect(harness.completeOperation).not.toHaveBeenCalled();
   });
 
+  it("replays a succeeded operation without requiring live credentials", async () => {
+    harness.claimOperation.mockResolvedValue(succeededOperation);
+    harness.readCredentials.mockResolvedValue(null);
+
+    const response = await POST(request(), context);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      operationId: "operation-one",
+      commitSha: resultCommitSha,
+    });
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("rejects a new commit when the repository is disconnected", async () => {
+    harness.readCredentials.mockResolvedValue(null);
+
+    const response = await POST(request(), context);
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "Research repository is disconnected",
+    });
+    expect(harness.claimOperation).toHaveBeenCalledOnce();
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
+  });
+
+  it("returns a stale conflict when claiming a drifted in-progress operation", async () => {
+    const currentHeadCommitSha = "c".repeat(40);
+    harness.claimOperation.mockRejectedValue(
+      new harness.StaleRepositoryError(currentHeadCommitSha)
+    );
+
+    const response = await POST(request(), context);
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "stale_repository",
+      currentHeadCommitSha,
+    });
+    expect(harness.commitArtifacts).not.toHaveBeenCalled();
+  });
+
   it("returns a stale conflict with the current remote head", async () => {
     const currentHeadCommitSha = "c".repeat(40);
     harness.commitArtifacts.mockRejectedValue(

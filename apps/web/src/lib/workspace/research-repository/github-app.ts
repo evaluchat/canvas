@@ -81,8 +81,23 @@ function requiredEnvironment(name: string): string {
   return value;
 }
 
+const GITHUB_REQUEST_TIMEOUT_MS = 15_000;
+
+function applyGithubRequestTimeout(octokit: Octokit): Octokit {
+  octokit.hook.before("request", (options) => {
+    const signal = AbortSignal.timeout(GITHUB_REQUEST_TIMEOUT_MS);
+    options.signal = signal;
+    options.request = { ...options.request, signal };
+  });
+  return octokit;
+}
+
 function oauthOctokit(): Octokit {
-  return new Octokit({ baseUrl: GITHUB_OAUTH_BASE_URL });
+  return applyGithubRequestTimeout(
+    new Octokit({
+      baseUrl: GITHUB_OAUTH_BASE_URL,
+    })
+  );
 }
 
 function expiresAt(seconds: unknown, now: number): string | undefined {
@@ -212,7 +227,7 @@ export async function refreshGithubUserTokenIfNeeded(
 }
 
 export function createGithubUserOctokit(accessToken: string): Octokit {
-  return new Octokit({ auth: accessToken });
+  return applyGithubRequestTimeout(new Octokit({ auth: accessToken }));
 }
 
 export async function resolveGithubResearchConnection(
@@ -314,10 +329,12 @@ function githubAppAuthOptions(installationId?: number) {
 export function createGithubInstallationOctokit(
   installationId: number
 ): Octokit {
-  return new Octokit({
-    authStrategy: createAppAuth,
-    auth: githubAppAuthOptions(installationId),
-  });
+  return applyGithubRequestTimeout(
+    new Octokit({
+      authStrategy: createAppAuth,
+      auth: githubAppAuthOptions(installationId),
+    })
+  );
 }
 
 /** Read repository metadata with installation-scoped App credentials. */

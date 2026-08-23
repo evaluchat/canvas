@@ -22,16 +22,36 @@ import {
 const SNAPSHOT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SEAL_MANIFEST_PATH = /^ledger\/seals\/([^/]+)\.seal\.yml$/;
+const METHOD_SEAL_MANIFEST_PATH =
+  /^methods\/[^/]+\/evidence\/ledgers\/([^/]+)\.seal\.yml$/;
+const METHOD_SEAL_RENDER_PATH =
+  /^methods\/([^/]+)\/evidence\/ledgers\/([^/]+)\.en\.md$/;
 const SEAL_INPUT_KINDS = new Set(["method", "evidence", "finding", "ledger"]);
 
 /**
  * Seal outputs live under ledger/seals/ (rendered `<id>.en.md` and
- * `<id>.seal.yml`). The renders carry kind "ledger" and must never feed back
- * into the input set: after the first seal, its own render would otherwise
- * become an input of the next seal and drift configurationHash/renderHash on
- * every seal even when nothing changed.
+ * `<id>.seal.yml`) and, for method-scoped seals, next to the method ledger.
+ * The renders carry kind "ledger" and must never feed back into the input
+ * set: after the first seal, its own render would otherwise become an input
+ * of the next seal and drift configurationHash/renderHash on every seal even
+ * when nothing changed.
  */
 const SEAL_OUTPUT_PREFIX = "ledger/seals/";
+
+function isSealManifestPath(path: string): boolean {
+  return SEAL_MANIFEST_PATH.test(path) || METHOD_SEAL_MANIFEST_PATH.test(path);
+}
+
+function isSealRenderPath(
+  path: string,
+  artifacts: readonly RepositoryArtifactRef[]
+): boolean {
+  if (path.startsWith(SEAL_OUTPUT_PREFIX)) return true;
+  const match = METHOD_SEAL_RENDER_PATH.exec(path);
+  if (!match) return false;
+  const manifestPath = `methods/${match[1]}/evidence/ledgers/${match[2]}.seal.yml`;
+  return artifacts.some((artifact) => artifact.path === manifestPath);
+}
 
 export type SealSnapshotErrorCode =
   | "DECLARATIONS_REQUIRED"
@@ -275,16 +295,16 @@ function ledgerSnapshot(
 function sealRefs(artifacts: RepositoryArtifactRef[]): RepositoryArtifactRef[] {
   return artifacts.filter(
     (artifact) =>
-      artifact.kind === "ledger_seal" && SEAL_MANIFEST_PATH.test(artifact.path)
+      artifact.kind === "ledger_seal" && isSealManifestPath(artifact.path)
   );
 }
 
-async function newestSealFromArtifacts(
+async function sealManifestsFromArtifacts(
   access: RepositorySealAccess,
   artifacts: RepositoryArtifactRef[],
   expectedCommitSha: string
-): Promise<string | undefined> {
-  const manifests = await Promise.all(
+): Promise<LedgerSealManifestV1[]> {
+  return Promise.all(
     sealRefs(artifacts).map(async (artifact) => {
       const blob = await readArtifactBlob(
         access.binding.installationId,
@@ -297,6 +317,18 @@ async function newestSealFromArtifacts(
       }
       return parseSealManifest(blob.content);
     })
+  );
+}
+
+async function newestSealFromArtifacts(
+  access: RepositorySealAccess,
+  artifacts: RepositoryArtifactRef[],
+  expectedCommitSha: string
+): Promise<string | undefined> {
+  const manifests = await sealManifestsFromArtifacts(
+    access,
+    artifacts,
+    expectedCommitSha
   );
   return manifests.sort(
     (left, right) =>
@@ -330,6 +362,17 @@ export async function previewSealSnapshot(
 
   const snapshotId = options.snapshotId ?? randomUUID();
   assertSnapshotId(snapshotId);
+  const sealed = await sealManifestsFromArtifacts(
+    access,
+    listed.artifacts,
+    listed.commitSha
+  );
+  if (sealed.some((manifest) => manifest.snapshotId === snapshotId)) {
+    throw new SealSnapshotError(
+      "SNAPSHOT_ALREADY_SEALED",
+      "A sealed snapshot with this id already exists"
+    );
+  }
   if (
     sealRefs(listed.artifacts).some(
       (artifact) => artifact.path === sealManifestPath(snapshotId)
@@ -343,24 +386,22 @@ export async function previewSealSnapshot(
       "A sealed snapshot with this id already exists"
     );
   }
-  if (
-    options.supersedes &&
-    !sealRefs(listed.artifacts).some(
-      (artifact) =>
-        SEAL_MANIFEST_PATH.exec(artifact.path)?.[1] === options.supersedes
-    )
-  ) {
-    throw new SealSnapshotError(
-      "UNKNOWN_SNAPSHOT",
-      "The superseded snapshot does not exist at repository head"
-    );
+  if (options.supersedes) {
+    if (
+      !sealed.some((manifest) => manifest.snapshotId === options.supersedes)
+    ) {
+      throw new SealSnapshotError(
+        "UNKNOWN_SNAPSHOT",
+        "The superseded snapshot does not exist at repository head"
+      );
+    }
   }
 
   const artifacts = listed.artifacts
     .filter(
       (artifact) =>
         SEAL_INPUT_KINDS.has(artifact.kind) &&
-        !artifact.path.startsWith(SEAL_OUTPUT_PREFIX)
+        !isSealRenderPath(artifact.path, listed.artifacts)
     )
     .sort((left, right) => compare(left.path, right.path));
   if (!artifacts.length) {

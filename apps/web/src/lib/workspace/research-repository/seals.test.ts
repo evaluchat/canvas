@@ -50,7 +50,7 @@ description: A deterministic test method.
 
 # Synthetic method`;
 
-const files = new Map<string, { content: string; blobSha: string }>([
+const BASELINE_FILES: Array<[string, { content: string; blobSha: string }]> = [
   [
     "methods/synthetic-method/synthetic-method.en.md",
     { content: methodContent, blobSha: "b".repeat(40) },
@@ -67,7 +67,8 @@ const files = new Map<string, { content: string; blobSha: string }>([
     "methods/synthetic-method/evidence/ledgers/draft-ledger.en.md",
     { content: "draft ledger bytes", blobSha: "e".repeat(40) },
   ],
-]);
+];
+const files = new Map<string, { content: string; blobSha: string }>();
 
 const artifacts = [
   {
@@ -145,6 +146,10 @@ function oldManifest(snapshotId = snapshotOne, at = reviewedAt) {
 
 describe("repository ledger seals", () => {
   beforeEach(() => {
+    files.clear();
+    for (const [path, file] of BASELINE_FILES) {
+      files.set(path, { ...file });
+    }
     harness.listArtifacts.mockReset();
     harness.readBlob.mockReset();
     harness.commitArtifacts.mockReset();
@@ -318,6 +323,10 @@ describe("repository ledger seals", () => {
 
   it("excludes sealed renders from later seal inputs", async () => {
     const sealedRenderPath = sealLedgerPath(snapshotOne);
+    files.set(sealManifestPath(snapshotOne), {
+      content: serializeSealManifest(oldManifest()),
+      blobSha: "c2".repeat(20),
+    });
     harness.listArtifacts.mockResolvedValue({
       artifacts: [
         ...artifacts,
@@ -411,6 +420,124 @@ describe("repository ledger seals", () => {
     });
 
     await expect(latestSealSnapshotId(access)).resolves.toBe(snapshotTwo);
+  });
+
+  it("excludes method-scoped seal renders and includes their manifests", async () => {
+    const methodManifest =
+      "methods/synthetic-method/evidence/ledgers/synthetic-snapshot.seal.yml";
+    const methodRender =
+      "methods/synthetic-method/evidence/ledgers/synthetic-snapshot.en.md";
+    files.set(methodManifest, {
+      content: serializeSealManifest(oldManifest()),
+      blobSha: "3".repeat(40),
+    });
+    files.set(methodRender, {
+      content: "sealed ledger render",
+      blobSha: "4".repeat(40),
+    });
+    harness.listArtifacts.mockResolvedValue({
+      commitSha: headCommitSha,
+      artifacts: [
+        ...artifacts,
+        {
+          artifactId: "ledger.synthetic-method.synthetic-snapshot",
+          kind: "ledger",
+          path: methodRender,
+          commitSha: headCommitSha,
+          blobSha: "4".repeat(40),
+          contentSha256: "a".repeat(64),
+        },
+        {
+          artifactId: "ledger-seal.synthetic-method.synthetic-snapshot",
+          kind: "ledger_seal",
+          path: methodManifest,
+          commitSha: headCommitSha,
+          blobSha: "3".repeat(40),
+          contentSha256: "b".repeat(64),
+        },
+      ],
+    });
+
+    const preview = await previewSealSnapshot(access, {
+      snapshotId: snapshotTwo,
+      reviewedAt,
+    });
+    expect(preview.inputArtifactIds).not.toContain(
+      "ledger.synthetic-method.synthetic-snapshot"
+    );
+    expect(preview.inputArtifactIds).toContain(
+      "ledger.synthetic-method.draft-ledger"
+    );
+    await expect(latestSealSnapshotId(access)).resolves.toBe(snapshotOne);
+  });
+
+  it("validates a superseded seal from manifest content when the filename differs", async () => {
+    const methodManifest =
+      "methods/synthetic-method/evidence/ledgers/synthetic-snapshot.seal.yml";
+    files.set(methodManifest, {
+      content: serializeSealManifest(oldManifest(snapshotOne)),
+      blobSha: "3".repeat(40),
+    });
+    harness.listArtifacts.mockResolvedValue({
+      commitSha: headCommitSha,
+      artifacts: [
+        ...artifacts,
+        {
+          artifactId: "ledger-seal.synthetic-method.synthetic-snapshot",
+          kind: "ledger_seal",
+          path: methodManifest,
+          commitSha: headCommitSha,
+          blobSha: "3".repeat(40),
+          contentSha256: "b".repeat(64),
+        },
+      ],
+    });
+
+    const preview = await previewSealSnapshot(access, {
+      snapshotId: snapshotTwo,
+      reviewedAt,
+      supersedes: snapshotOne,
+    });
+    expect(preview.supersedes).toBe(snapshotOne);
+  });
+
+  it("rejects a duplicate snapshot id from method-scoped manifest content", async () => {
+    const methodManifest =
+      "methods/synthetic-method/evidence/ledgers/synthetic-snapshot.seal.yml";
+    files.set(methodManifest, {
+      content: serializeSealManifest(oldManifest(snapshotOne)),
+      blobSha: "3".repeat(40),
+    });
+    harness.listArtifacts.mockResolvedValue({
+      commitSha: headCommitSha,
+      artifacts: [
+        ...artifacts,
+        {
+          artifactId: "ledger-seal.synthetic-method.synthetic-snapshot",
+          kind: "ledger_seal",
+          path: methodManifest,
+          commitSha: headCommitSha,
+          blobSha: "3".repeat(40),
+          contentSha256: "b".repeat(64),
+        },
+      ],
+    });
+
+    await expect(
+      previewSealSnapshot(access, {
+        snapshotId: snapshotOne,
+        reviewedAt,
+      })
+    ).rejects.toMatchObject({
+      code: "SNAPSHOT_ALREADY_SEALED",
+    } satisfies Partial<SealSnapshotError>);
+
+    await expect(
+      previewSealSnapshot(access, {
+        snapshotId: snapshotTwo,
+        reviewedAt,
+      })
+    ).resolves.toMatchObject({ snapshotId: snapshotTwo });
   });
 });
 

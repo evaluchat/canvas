@@ -119,7 +119,10 @@ export function workspaceItemTitle(item: WorkspaceItem): string {
 
 export function workspaceItemDescription(item: WorkspaceItem): string {
   if (item.kind === "research_repository") {
-    return `GitHub repository #${item.binding.repositoryId}`;
+    const repositoryId = item.binding?.repositoryId;
+    return repositoryId
+      ? `GitHub repository #${repositoryId}`
+      : "Unusable research repository";
   }
   if (item.kind === "ledger_snapshot") return item.snapshot.predicate;
   if (item.kind === "ledger") {

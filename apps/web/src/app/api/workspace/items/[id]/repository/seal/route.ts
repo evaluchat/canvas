@@ -444,10 +444,7 @@ export async function POST(request: Request, context: RouteContext) {
       repositoryId: item.binding.repositoryId,
       branch: item.binding.branch,
       expectedHeadSha: item.binding.headCommitSha,
-      files: [
-        sealLedgerPath(proposedSnapshotId),
-        sealManifestPath(proposedSnapshotId),
-      ],
+      files: [sealLedgerPath(snapshotId), sealManifestPath(snapshotId)],
     });
     access = { binding: item.binding, credentials, repository };
   } catch (error) {

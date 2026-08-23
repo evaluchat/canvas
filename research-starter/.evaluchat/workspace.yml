@@ -1,0 +1,5 @@
+# synthetic: true — no real participants
+schema_version: "1"
+layout_version: "1.0"
+workspace_id: synthetic-workspace
+managed_branch: evaluchat/workspace

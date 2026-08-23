@@ -1,0 +1,15 @@
+# synthetic: true — no real participants; placeholder hashes only
+schema_version: "1"
+snapshot_id: synthetic-snapshot
+sealed_from_commit: "1111111111111111111111111111111111111111"
+reviewer_login: synthetic-reviewer
+reviewed_at: "2026-08-23T00:00:00.000Z"
+method:
+  id: synthetic-method
+  version: 1.0.0
+inputs:
+  - path: methods/synthetic-method/evidence/synthetic-evidence.en.md
+    blob_sha: "2222222222222222222222222222222222222222"
+    sha256: "3333333333333333333333333333333333333333333333333333333333333333"
+configuration_hash: "4444444444444444444444444444444444444444444444444444444444444444"
+render_hash: "5555555555555555555555555555555555555555555555555555555555555555"

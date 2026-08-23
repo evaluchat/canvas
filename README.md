@@ -40,6 +40,7 @@ Try the public beta at [evaluchat.org](https://evaluchat.org), or run it yoursel
 | `apps/web`        | Next.js web app (UI + API routes) — `@opencanvas/web`                           |
 | `apps/agents`     | LangGraph agent graphs (generation, reflection, routing) — `@opencanvas/agents` |
 | `packages/shared` | Shared types and utilities — `@opencanvas/shared`                               |
+| `research-starter/` | Layout-1.0 Private Research Starter (SYNTHETIC default)                       |
 
 ## Setup locally
 
@@ -112,10 +113,13 @@ also powers:
 
 Direct signup creates an isolated organisation-admin workspace at `/teacher`.
 Invited teachers manage classes, assignments, and student invitations; invited
-students see only assigned work. Research materials are public and there is no
-separate in-app researcher persona. The canonical Essays profile preserves the
-current four-message drafting escape hatch, with valid gate-off, no-AI, and
-no-tracking profiles available for comparison.
+students see only assigned work. Research materials stay public in the beta.
+v0.8 adds a **dark** GitHub-backed private research workspace (flag off).
+[`research-starter/`](research-starter/) is the SYNTHETIC default for that
+flow — no real participants; do not load identifiable classroom data into it.
+The canonical Essays profile preserves the current four-message drafting
+escape hatch, with valid gate-off, no-AI, and no-tracking profiles available
+for comparison.
 
 Desktop/Electron work is paused. Self-hosting guidance is retained, but a
 turnkey self-host install and database migration are not launch deliverables.

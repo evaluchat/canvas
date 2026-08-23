@@ -1,0 +1,8 @@
+# synthetic: true — no real participants
+cff-version: 1.2.0
+message: Cite this SYNTHETIC Private Research Starter only as a layout example.
+title: Synthetic critic-versus-generator research workspace
+type: dataset
+version: 1.0.0
+authors:
+  - name: Evaluchat Synthetic Starter

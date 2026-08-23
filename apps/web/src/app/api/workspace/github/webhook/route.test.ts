@@ -217,6 +217,20 @@ describe("POST /api/workspace/github/webhook", () => {
     ]);
   });
 
+  it("returns 500 when credential owner search is truncated", async () => {
+    harness.findOwners.mockRejectedValue(
+      Object.assign(new Error("truncated"), {
+        name: "CredentialOwnerSearchTruncatedError",
+      })
+    );
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await POST(request({ installation: { id: 99 } }));
+
+    expect(response.status).toBe(500);
+    expect(harness.claimDelivery).not.toHaveBeenCalled();
+  });
+
   it("releases a delivery claim when handling fails and returns 500", async () => {
     harness.recordPush.mockRejectedValue(new Error("store unavailable"));
     vi.spyOn(console, "error").mockImplementation(() => undefined);

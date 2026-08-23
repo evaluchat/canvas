@@ -16,7 +16,16 @@ const OAUTH_STATE_TTL_MINUTES = 10;
 const WEBHOOK_DELIVERY_TTL_MINUTES = 7 * 24 * 60;
 const IDENTIFIER_HMAC_DOMAIN = "github-research-identifier-hmac";
 const SEARCH_PAGE_SIZE = 100;
-const MAX_CREDENTIAL_SEARCH_PAGES = 100;
+export const MAX_CREDENTIAL_SEARCH_PAGES = 100;
+
+export class CredentialOwnerSearchTruncatedError extends Error {
+  constructor(public readonly installationId: number) {
+    super(
+      `GitHub credential owner search truncated after ${MAX_CREDENTIAL_SEARCH_PAGES} pages for installation ${installationId}`
+    );
+    this.name = "CredentialOwnerSearchTruncatedError";
+  }
+}
 
 export type GithubResearchCredentialRecord = {
   accessTokenEnc: GithubResearchEncryptedEnvelope;
@@ -397,18 +406,25 @@ export async function findGithubCredentialOwnersByInstallationId(
       }
     );
     items.push(...response.items);
-    if (response.items.length < SEARCH_PAGE_SIZE) break;
+    if (response.items.length < SEARCH_PAGE_SIZE) {
+      return items
+        .filter(
+          (item) =>
+            item.key === GITHUB_RESEARCH_CREDENTIALS_KEY &&
+            item.value?.installationId === installationId &&
+            item.namespace[0] === GITHUB_RESEARCH_CREDENTIALS_ROOT &&
+            typeof item.namespace[1] === "string"
+        )
+        .map((item) => item.namespace[1] as string);
+    }
     offset += response.items.length;
   }
-  return items
-    .filter(
-      (item) =>
-        item.key === GITHUB_RESEARCH_CREDENTIALS_KEY &&
-        item.value?.installationId === installationId &&
-        item.namespace[0] === GITHUB_RESEARCH_CREDENTIALS_ROOT &&
-        typeof item.namespace[1] === "string"
-    )
-    .map((item) => item.namespace[1]);
+  console.error(
+    "[github-research] credential owner search truncated",
+    installationId,
+    MAX_CREDENTIAL_SEARCH_PAGES
+  );
+  throw new CredentialOwnerSearchTruncatedError(installationId);
 }
 
 export async function claimGithubWebhookDelivery(

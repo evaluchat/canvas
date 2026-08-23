@@ -470,6 +470,36 @@ describe("repository ledger seals", () => {
     );
     await expect(latestSealSnapshotId(access)).resolves.toBe(snapshotOne);
   });
+
+  it("validates a superseded seal from manifest content when the filename differs", async () => {
+    const methodManifest =
+      "methods/synthetic-method/evidence/ledgers/synthetic-snapshot.seal.yml";
+    files.set(methodManifest, {
+      content: serializeSealManifest(oldManifest(snapshotOne)),
+      blobSha: "3".repeat(40),
+    });
+    harness.listArtifacts.mockResolvedValue({
+      commitSha: headCommitSha,
+      artifacts: [
+        ...artifacts,
+        {
+          artifactId: "ledger-seal.synthetic-method.synthetic-snapshot",
+          kind: "ledger_seal",
+          path: methodManifest,
+          commitSha: headCommitSha,
+          blobSha: "3".repeat(40),
+          contentSha256: "b".repeat(64),
+        },
+      ],
+    });
+
+    const preview = await previewSealSnapshot(access, {
+      snapshotId: snapshotTwo,
+      reviewedAt,
+      supersedes: snapshotOne,
+    });
+    expect(preview.supersedes).toBe(snapshotOne);
+  });
 });
 
 function yamlObject(source: string): unknown {

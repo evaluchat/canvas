@@ -38,13 +38,6 @@ const SEAL_INPUT_KINDS = new Set(["method", "evidence", "finding", "ledger"]);
  */
 const SEAL_OUTPUT_PREFIX = "ledger/seals/";
 
-function sealManifestSnapshotId(path: string): string | undefined {
-  return (
-    SEAL_MANIFEST_PATH.exec(path)?.[1] ??
-    METHOD_SEAL_MANIFEST_PATH.exec(path)?.[1]
-  );
-}
-
 function isSealManifestPath(path: string): boolean {
   return SEAL_MANIFEST_PATH.test(path) || METHOD_SEAL_MANIFEST_PATH.test(path);
 }
@@ -306,12 +299,12 @@ function sealRefs(artifacts: RepositoryArtifactRef[]): RepositoryArtifactRef[] {
   );
 }
 
-async function newestSealFromArtifacts(
+async function sealManifestsFromArtifacts(
   access: RepositorySealAccess,
   artifacts: RepositoryArtifactRef[],
   expectedCommitSha: string
-): Promise<string | undefined> {
-  const manifests = await Promise.all(
+): Promise<LedgerSealManifestV1[]> {
+  return Promise.all(
     sealRefs(artifacts).map(async (artifact) => {
       const blob = await readArtifactBlob(
         access.binding.installationId,
@@ -324,6 +317,18 @@ async function newestSealFromArtifacts(
       }
       return parseSealManifest(blob.content);
     })
+  );
+}
+
+async function newestSealFromArtifacts(
+  access: RepositorySealAccess,
+  artifacts: RepositoryArtifactRef[],
+  expectedCommitSha: string
+): Promise<string | undefined> {
+  const manifests = await sealManifestsFromArtifacts(
+    access,
+    artifacts,
+    expectedCommitSha
   );
   return manifests.sort(
     (left, right) =>
@@ -370,16 +375,20 @@ export async function previewSealSnapshot(
       "A sealed snapshot with this id already exists"
     );
   }
-  if (
-    options.supersedes &&
-    !sealRefs(listed.artifacts).some(
-      (artifact) => sealManifestSnapshotId(artifact.path) === options.supersedes
-    )
-  ) {
-    throw new SealSnapshotError(
-      "UNKNOWN_SNAPSHOT",
-      "The superseded snapshot does not exist at repository head"
+  if (options.supersedes) {
+    const sealed = await sealManifestsFromArtifacts(
+      access,
+      listed.artifacts,
+      listed.commitSha
     );
+    if (
+      !sealed.some((manifest) => manifest.snapshotId === options.supersedes)
+    ) {
+      throw new SealSnapshotError(
+        "UNKNOWN_SNAPSHOT",
+        "The superseded snapshot does not exist at repository head"
+      );
+    }
   }
 
   const artifacts = listed.artifacts

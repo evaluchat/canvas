@@ -110,6 +110,20 @@ describe("GET /api/workspace/github/callback", () => {
     );
   });
 
+  it("maps a GitHub API exchange error to the callback error redirect", async () => {
+    harness.exchangeGithubOAuthCode.mockRejectedValue(
+      Object.assign(new Error("Bad credentials"), { status: 401 })
+    );
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/workspace/settings?github=error"
+    );
+    expect(harness.storeGithubResearchCredentials).not.toHaveBeenCalled();
+  });
+
   it("logs only an error message when the OAuth callback fails", async () => {
     const error = Object.assign(new Error("exchange failed"), {
       request: { body: { client_secret: "must-not-leak" } },

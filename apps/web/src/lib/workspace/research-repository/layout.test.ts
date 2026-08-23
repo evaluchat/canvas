@@ -128,4 +128,26 @@ describe("research repository layout 1.0", () => {
     expect(() => validateRepositoryArtifactCount(1000)).not.toThrow();
     expect(() => validateRepositoryArtifactCount(1001)).toThrow(/1000/);
   });
+
+  it("rejects mixed-case snapshot ids and unsupported layout versions", () => {
+    const mixed = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA";
+    expect(() => resolveRepositoryArtifactPath(`ledger.${mixed}`)).toThrow(
+      RepositoryLayoutError
+    );
+    expect(
+      identifyRepositoryArtifactPath(`ledger/seals/${mixed}.seal.yml`)
+    ).toBeUndefined();
+    expect(() => resolveRepositoryArtifactPath("index", "1.1")).toThrow(
+      RepositoryLayoutError
+    );
+    expect(() => resolveRepositoryArtifactPath("index", "2.0")).toThrow(
+      RepositoryLayoutError
+    );
+  });
+
+  it("refuses gitlink/submodule modes", () => {
+    expect(() => validateRepositoryArtifactMode("index.md", "160000")).toThrow(
+      /non-executable/
+    );
+  });
 });

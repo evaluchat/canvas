@@ -30,7 +30,9 @@ const harness = vi.hoisted(() => {
   return {
     items,
     client,
-    Client: vi.fn(() => client),
+    Client: vi.fn(function ClientMock() {
+      return client;
+    }),
   };
 });
 

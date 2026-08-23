@@ -640,6 +640,19 @@ describe("research repository workspace items", () => {
     expect(JSON.stringify(harness.state.manifest)).not.toContain("content");
   });
 
+  it("projects a deleted repository as unavailable", async () => {
+    harness.getGithubInstallationRepository.mockRejectedValue(
+      Object.assign(new Error("Not Found"), { status: 404 })
+    );
+
+    await expect(
+      getResearchRepositoryStatus("user-1", repositoryWorkspaceItem())
+    ).resolves.toMatchObject({
+      state: "blocked",
+      reason: "repository_deleted",
+    });
+  });
+
   it("blocks a repository that became public", async () => {
     harness.getGithubInstallationRepository.mockResolvedValue({
       id: 101,

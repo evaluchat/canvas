@@ -310,7 +310,9 @@ export async function commitArtifactBlobs(
       message: input.message,
       tree: treeSha,
       parents: [input.baseSha],
-      author: input.authorUser,
+      // V08-10: keep author+committer on the configured app identity when the
+      // researcher identity is absent. Never attribute to VALERY_GITHUB_TOKEN.
+      author: input.authorUser ?? GITHUB_RESEARCH_APP_COMMITTER,
       committer: GITHUB_RESEARCH_APP_COMMITTER,
       headers: headers(),
     }

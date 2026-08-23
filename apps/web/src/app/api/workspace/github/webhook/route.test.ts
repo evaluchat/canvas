@@ -73,6 +73,15 @@ describe("POST /api/workspace/github/webhook", () => {
     expect(harness.verify).not.toHaveBeenCalled();
   });
 
+  it("rejects a missing HMAC signature before handling the payload", async () => {
+    const response = await POST(
+      request({ installation: { id: 99 } }, { "x-hub-signature-256": "" })
+    );
+    expect(response.status).toBe(401);
+    expect(harness.verify).not.toHaveBeenCalled();
+    expect(harness.findOwners).not.toHaveBeenCalled();
+  });
+
   it("rejects an HMAC failure before handling the payload", async () => {
     harness.verify.mockResolvedValue(false);
     const response = await POST(request({ installation: { id: 99 } }));

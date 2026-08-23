@@ -246,6 +246,16 @@ describe("GitHub App OAuth helpers", () => {
     );
   });
 
+  it("surfaces GitHub API errors from installation repository reads", async () => {
+    harness.request.mockRejectedValue(
+      Object.assign(new Error("Not Found"), { status: 404 })
+    );
+
+    await expect(
+      getGithubInstallationRepository(99, 101)
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
   it("reads a branch head with installation auth", async () => {
     const sha = "a".repeat(40);
     harness.request.mockResolvedValue({ data: { commit: { sha } } });

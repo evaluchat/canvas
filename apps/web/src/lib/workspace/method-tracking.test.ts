@@ -25,7 +25,13 @@ const harness = vi.hoisted(() => {
         .map(([, item]) => item),
     })),
   };
-  return { items, store, Client: vi.fn(() => ({ store })) };
+  return {
+    items,
+    store,
+    Client: vi.fn(function ClientMock() {
+      return { store };
+    }),
+  };
 });
 
 vi.mock("@langchain/langgraph-sdk", () => ({ Client: harness.Client }));

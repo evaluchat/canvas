@@ -16,8 +16,12 @@ import {
   REPOSITORY_CHANGED,
   REPOSITORY_READ_ONLY,
   REPOSITORY_UNAVAILABLE,
+  RepositoryAccessError,
   assertRepositoryWriteAccess,
+  githubErrorStatus,
   loadInstallationRepository,
+  repositoryAccessBody,
+  repositoryAccessHttpStatus,
 } from "./access";
 
 const head = "a".repeat(40);
@@ -33,6 +37,27 @@ describe("repository access guards", () => {
     for (const method of Object.values(harness)) method.mockReset();
     harness.getRepository.mockResolvedValue(repository);
     harness.getHead.mockResolvedValue(head);
+  });
+
+  it("maps Octokit error shapes onto the route error contract", () => {
+    expect(githubErrorStatus({ status: 404 })).toBe(404);
+    expect(githubErrorStatus({ statusCode: 403 })).toBe(403);
+    expect(githubErrorStatus({ response: { status: 401 } })).toBe(401);
+    expect(githubErrorStatus(new Error("boom"))).toBeUndefined();
+    expect(repositoryAccessHttpStatus(REPOSITORY_UNAVAILABLE)).toBe(409);
+    expect(repositoryAccessHttpStatus(REPOSITORY_READ_ONLY)).toBe(403);
+    expect(repositoryAccessHttpStatus(REPOSITORY_CHANGED)).toBe(409);
+    expect(
+      repositoryAccessBody(
+        new RepositoryAccessError(
+          REPOSITORY_UNAVAILABLE,
+          "Repository unavailable (deleted or access removed)."
+        )
+      )
+    ).toEqual({
+      error: REPOSITORY_UNAVAILABLE,
+      message: "Repository unavailable (deleted or access removed).",
+    });
   });
 
   it("maps a GitHub 404 to REPOSITORY_UNAVAILABLE", async () => {

@@ -84,6 +84,78 @@ describe("research repository contracts", () => {
     ).toBe(false);
   });
 
+  it("is strict and versioned: extra keys and unknown versions fail", () => {
+    expect(
+      ResearchRepositoryBindingSchema.safeParse({
+        ...binding,
+        secret: "must-not-pass",
+      }).success
+    ).toBe(false);
+    expect(
+      RepositoryArtifactRefSchema.safeParse({
+        ...artifact,
+        body: "must-not-be-retained",
+      }).success
+    ).toBe(false);
+    expect(
+      ResearchRepositoryBindingSchema.safeParse({
+        ...binding,
+        layoutVersion: "1",
+      }).success
+    ).toBe(false);
+    expect(
+      LedgerSealManifestV1Schema.safeParse({
+        schema_version: "2",
+        snapshot_id: "synthetic-snapshot",
+        sealed_from_commit: commitSha,
+        reviewer_login: "synthetic-reviewer",
+        reviewed_at: timestamp,
+        method: { id: "synthetic-method", version: "1.0.0" },
+        inputs: [
+          { path: artifact.path, blob_sha: blobSha, sha256: contentSha256 },
+        ],
+        configuration_hash: "f".repeat(64),
+        render_hash: "1".repeat(64),
+      }).success
+    ).toBe(false);
+    expect(
+      PublicationBundleV1Schema.safeParse({
+        ...bundle,
+        schemaVersion: "2",
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects uppercase hashes and mixed-case snapshot identifiers", () => {
+    expect(
+      RepositoryArtifactRefSchema.safeParse({
+        ...artifact,
+        commitSha: "A".repeat(40),
+      }).success
+    ).toBe(false);
+    expect(
+      RepositoryArtifactRefSchema.safeParse({
+        ...artifact,
+        contentSha256: "C".repeat(64),
+      }).success
+    ).toBe(false);
+    expect(
+      LedgerSealManifestV1Schema.safeParse({
+        schema_version: "1",
+        snapshot_id: "Synthetic-Snapshot",
+        sealed_from_commit: commitSha,
+        reviewer_login: "synthetic-reviewer",
+        reviewed_at: timestamp,
+        method: { id: "synthetic-method", version: "1.0.0" },
+        inputs: [
+          { path: artifact.path, blob_sha: blobSha, sha256: contentSha256 },
+        ],
+        configuration_hash: "f".repeat(64),
+        render_hash: "1".repeat(64),
+      }).success
+    ).toBe(false);
+  });
+
   it("parses ready and compatibility read-only repository states", () => {
     expect(
       RepositoryStatusSchema.safeParse({

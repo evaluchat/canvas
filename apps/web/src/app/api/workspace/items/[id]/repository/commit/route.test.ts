@@ -227,7 +227,10 @@ describe("POST repository artifact commit", () => {
     );
 
     expect(response.status).toBe(422);
-    expect(await response.json()).toEqual({ error: "INVALID_FRONT_MATTER" });
+    const body = await response.json();
+    expect(body).toEqual({ error: "INVALID_FRONT_MATTER" });
+    expect(JSON.stringify(body)).not.toContain("status: [");
+    expect(JSON.stringify(body)).not.toContain("synthetic-method");
     expect(harness.claimOperation).toHaveBeenCalledOnce();
     expect(harness.startOperation).not.toHaveBeenCalled();
     expect(harness.commitArtifacts).not.toHaveBeenCalled();

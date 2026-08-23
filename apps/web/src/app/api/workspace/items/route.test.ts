@@ -135,6 +135,24 @@ describe("POST /api/workspace/items", () => {
     expect(harness.verifyUserAuthenticated).not.toHaveBeenCalled();
   });
 
+  it("still creates v0.7 ledger items while the research workspace flag is off", async () => {
+    harness.enabled.mockReturnValue(false);
+    harness.createLedgerWorkspaceItem.mockResolvedValue({
+      id: "wi_ledger",
+      kind: "ledger",
+    });
+
+    const response = await POST(
+      request({ kind: "ledger", methodId: "ledger-demo-method" })
+    );
+
+    expect(response.status).toBe(201);
+    expect(harness.createLedgerWorkspaceItem).toHaveBeenCalledWith(
+      "user-1",
+      "ledger-demo-method"
+    );
+  });
+
   it("rejects an empty body", async () => {
     const response = await POST(request({}));
     expect(response.status).toBe(400);

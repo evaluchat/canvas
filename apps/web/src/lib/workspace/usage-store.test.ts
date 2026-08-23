@@ -6,7 +6,9 @@ const harness = vi.hoisted(() => ({
 }));
 
 vi.mock("@langchain/langgraph-sdk", () => ({
-  Client: vi.fn(() => ({ store: harness.store })),
+  Client: vi.fn(function ClientMock() {
+    return { store: harness.store };
+  }),
 }));
 vi.mock("@/lib/admin/store-reader", () => ({
   readAllStoreItems: harness.readAllStoreItems,

@@ -11,6 +11,7 @@ vi.mock("./github-app", () => ({
   getGithubRepositoryBranchHead: harness.getHead,
 }));
 
+import { createHash } from "node:crypto";
 import {
   commitArtifactBlobs,
   GITHUB_RESEARCH_APP_COMMITTER,
@@ -80,6 +81,10 @@ describe("GitHub repository Git Data adapter", () => {
         committer: GITHUB_RESEARCH_APP_COMMITTER,
       })
     );
+    expect(GITHUB_RESEARCH_APP_COMMITTER).toEqual({
+      name: "Evaluchat GitHub App",
+      email: "github-app@evaluchat.org",
+    });
     expect(harness.request).toHaveBeenCalledWith(
       "PATCH /repos/{owner}/{repo}/git/refs/{ref}",
       expect.objectContaining({
@@ -87,6 +92,45 @@ describe("GitHub repository Git Data adapter", () => {
         sha: commitSha,
         force: false,
       })
+    );
+  });
+
+  it("uses the configured app identity for both author and committer when none is supplied", async () => {
+    harness.request.mockImplementation(async (route: string) => {
+      if (route === "GET /repos/{owner}/{repo}/git/commits/{commit_sha}") {
+        return { data: { tree: { sha: baseTreeSha } } };
+      }
+      if (route === "POST /repos/{owner}/{repo}/git/blobs") {
+        return { data: { sha: blobSha } };
+      }
+      if (route === "POST /repos/{owner}/{repo}/git/trees") {
+        return { data: { sha: treeSha } };
+      }
+      if (route === "POST /repos/{owner}/{repo}/git/commits") {
+        return { data: { sha: commitSha } };
+      }
+      if (route === "PATCH /repos/{owner}/{repo}/git/refs/{ref}") {
+        return { data: {} };
+      }
+      throw new Error(`Unexpected route ${route}`);
+    });
+
+    await commitArtifactBlobs(99, repository, "evaluchat/workspace", {
+      message: "Update index",
+      baseSha,
+      files: [{ path: "index.md", content: "# Updated\n" }],
+    });
+
+    expect(harness.request).toHaveBeenCalledWith(
+      "POST /repos/{owner}/{repo}/git/commits",
+      expect.objectContaining({
+        author: GITHUB_RESEARCH_APP_COMMITTER,
+        committer: GITHUB_RESEARCH_APP_COMMITTER,
+      })
+    );
+    expect(JSON.stringify(harness.request.mock.calls)).not.toContain("Valery");
+    expect(JSON.stringify(harness.request.mock.calls)).not.toContain(
+      "VALERY_GITHUB_TOKEN"
     );
   });
 
@@ -192,6 +236,70 @@ describe("GitHub repository Git Data adapter", () => {
       "GET /repos/{owner}/{repo}/git/blobs/{file_sha}",
       expect.objectContaining({ file_sha: blobSha })
     );
+  });
+
+  it("hashes managed blob bytes deterministically and ignores gitlink/submodule entries", async () => {
+    const content = "# Index\n";
+    const expectedHash = createHash("sha256").update(content).digest("hex");
+    harness.request.mockImplementation(async (route: string) => {
+      if (route === "GET /repos/{owner}/{repo}/git/commits/{commit_sha}") {
+        return { data: { tree: { sha: baseTreeSha } } };
+      }
+      if (route === "GET /repos/{owner}/{repo}/git/trees/{tree_sha}") {
+        return {
+          data: {
+            tree: [
+              { path: "index.md", mode: "100644", type: "blob", sha: blobSha },
+              {
+                path: "vendor/lib",
+                mode: "160000",
+                type: "commit",
+                sha: "0".repeat(40),
+              },
+              {
+                path: ".gitmodules",
+                mode: "100644",
+                type: "blob",
+                sha: treeSha,
+              },
+            ],
+          },
+        };
+      }
+      if (route === "GET /repos/{owner}/{repo}/git/blobs/{file_sha}") {
+        return {
+          data: {
+            content: Buffer.from(content).toString("base64"),
+            encoding: "base64",
+          },
+        };
+      }
+      throw new Error(`Unexpected route ${route}`);
+    });
+
+    const first = await listRepositoryArtifactRefs(
+      99,
+      repository,
+      "evaluchat/workspace"
+    );
+    const second = await listRepositoryArtifactRefs(
+      99,
+      repository,
+      "evaluchat/workspace"
+    );
+
+    expect(first.artifacts).toEqual([
+      {
+        artifactId: "index",
+        kind: "index",
+        path: "index.md",
+        commitSha: baseSha,
+        blobSha,
+        contentSha256: expectedHash,
+      },
+    ]);
+    expect(first).toEqual(second);
+    expect(first.artifacts[0]?.contentSha256).toBe(expectedHash);
   });
 
   it("rejects an unsafe sibling in a managed commit", async () => {

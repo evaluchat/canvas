@@ -402,6 +402,24 @@ describe("POST repository seal", () => {
     expect(harness.claim).not.toHaveBeenCalled();
   });
 
+  it("returns a stale conflict when claiming a drifted seal operation", async () => {
+    harness.claim.mockRejectedValue(
+      new harness.StaleRepositoryError(currentCommitSha)
+    );
+
+    const response = await POST(
+      request({ action: "seal", preview, declarations: confirmedDeclarations }),
+      context
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "stale_repository",
+      currentHeadCommitSha: currentCommitSha,
+    });
+    expect(harness.start).not.toHaveBeenCalled();
+  });
+
   it("returns a stale repository conflict", async () => {
     harness.preview.mockRejectedValue(
       new harness.StaleRepositoryError(currentCommitSha)

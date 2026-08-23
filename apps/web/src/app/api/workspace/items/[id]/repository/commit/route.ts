@@ -6,8 +6,6 @@ import {
   updateResearchRepositoryBindingHead,
 } from "@/lib/workspace/store";
 import {
-  REPOSITORY_DISCONNECTED,
-  REPOSITORY_DISCONNECTED_MESSAGE,
   RepositoryAccessError,
   assertRepositoryPrivate,
   assertRepositoryWriteAccess,
@@ -144,17 +142,6 @@ export async function POST(request: Request, context: RouteContext) {
 
   let operation;
   try {
-    const credentials = await readGithubResearchCredentials(auth.user.id);
-    if (
-      !credentials ||
-      credentials.installationId !== item.binding.installationId ||
-      !credentials.repositoryIds.includes(item.binding.repositoryId)
-    ) {
-      throw new RepositoryAccessError(
-        REPOSITORY_DISCONNECTED,
-        REPOSITORY_DISCONNECTED_MESSAGE
-      );
-    }
     operation = await claimRepositoryOperation(auth.user.id, {
       workspaceId: item.id,
       kind: "commit",
@@ -177,6 +164,15 @@ export async function POST(request: Request, context: RouteContext) {
   } catch (error) {
     if (error instanceof RepositoryOperationInProgressError) {
       return json({ error: "repository_operation_in_progress" }, 409);
+    }
+    if (error instanceof StaleRepositoryError) {
+      return json(
+        {
+          error: "stale_repository",
+          currentHeadCommitSha: error.currentHeadCommitSha,
+        },
+        409
+      );
     }
     if (error instanceof RepositoryAccessError) {
       return json(

@@ -500,6 +500,45 @@ describe("repository ledger seals", () => {
     });
     expect(preview.supersedes).toBe(snapshotOne);
   });
+
+  it("rejects a duplicate snapshot id from method-scoped manifest content", async () => {
+    const methodManifest =
+      "methods/synthetic-method/evidence/ledgers/synthetic-snapshot.seal.yml";
+    files.set(methodManifest, {
+      content: serializeSealManifest(oldManifest(snapshotOne)),
+      blobSha: "3".repeat(40),
+    });
+    harness.listArtifacts.mockResolvedValue({
+      commitSha: headCommitSha,
+      artifacts: [
+        ...artifacts,
+        {
+          artifactId: "ledger-seal.synthetic-method.synthetic-snapshot",
+          kind: "ledger_seal",
+          path: methodManifest,
+          commitSha: headCommitSha,
+          blobSha: "3".repeat(40),
+          contentSha256: "b".repeat(64),
+        },
+      ],
+    });
+
+    await expect(
+      previewSealSnapshot(access, {
+        snapshotId: snapshotOne,
+        reviewedAt,
+      })
+    ).rejects.toMatchObject({
+      code: "SNAPSHOT_ALREADY_SEALED",
+    } satisfies Partial<SealSnapshotError>);
+
+    await expect(
+      previewSealSnapshot(access, {
+        snapshotId: snapshotTwo,
+        reviewedAt,
+      })
+    ).resolves.toMatchObject({ snapshotId: snapshotTwo });
+  });
 });
 
 function yamlObject(source: string): unknown {

@@ -362,6 +362,17 @@ export async function previewSealSnapshot(
 
   const snapshotId = options.snapshotId ?? randomUUID();
   assertSnapshotId(snapshotId);
+  const sealed = await sealManifestsFromArtifacts(
+    access,
+    listed.artifacts,
+    listed.commitSha
+  );
+  if (sealed.some((manifest) => manifest.snapshotId === snapshotId)) {
+    throw new SealSnapshotError(
+      "SNAPSHOT_ALREADY_SEALED",
+      "A sealed snapshot with this id already exists"
+    );
+  }
   if (
     sealRefs(listed.artifacts).some(
       (artifact) => artifact.path === sealManifestPath(snapshotId)
@@ -376,11 +387,6 @@ export async function previewSealSnapshot(
     );
   }
   if (options.supersedes) {
-    const sealed = await sealManifestsFromArtifacts(
-      access,
-      listed.artifacts,
-      listed.commitSha
-    );
     if (
       !sealed.some((manifest) => manifest.snapshotId === options.supersedes)
     ) {

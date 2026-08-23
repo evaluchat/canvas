@@ -5,9 +5,6 @@ export default defineConfig({
   esbuild: {
     jsx: "automatic",
   },
-  oxc: {
-    jsx: { runtime: "automatic" },
-  },
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
   },

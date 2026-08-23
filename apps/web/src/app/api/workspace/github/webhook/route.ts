@@ -102,10 +102,11 @@ export async function POST(request: NextRequest) {
   }
 
   const signature = request.headers.get("x-hub-signature-256");
-  const rawPayload = await request.text();
   if (!signature) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
+
+  const rawPayload = await request.text();
 
   let verified = false;
   try {
